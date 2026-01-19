@@ -3,19 +3,7 @@
 import { useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import DashboardView from "@/app/components/DashboardView"
-
-/* ================= TYPES ================= */
-
-export type Tier = "BULLION" | "HELLION" | "TORION"
-
-export type Account = {
-  tier: Tier
-  baseBalance: number
-  balance: number
-  funded: boolean
-}
-
-/* ================= ACCOUNT FACTORY ================= */
+import type { Account, Tier } from "@/app/types/account"
 
 function getAccountByMode(mode: string): Account {
   if (mode === "hellion") {
@@ -44,9 +32,7 @@ function getAccountByMode(mode: string): Account {
   }
 }
 
-/* ================= ENTRY ================= */
-
-export default function DashboardEntry() {
+export default function Page() {
   const params = useSearchParams()
   const mode = params.get("mode") ?? "bullion"
 

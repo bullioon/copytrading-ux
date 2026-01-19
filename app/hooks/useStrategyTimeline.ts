@@ -1,0 +1,1 @@
+import type { StrategyEvent } from "@/app/types/strategy"

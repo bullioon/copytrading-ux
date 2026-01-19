@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="606px" height="174px" viewBox="0 0 606 174" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Group</title>
+    <g id="bullions" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Frame-45" transform="translate(-1399, -2795)" fill="#FFFFFF">
+            <g id="Group" transform="translate(1399, 2449)">
+                <g transform="translate(0, 40.3457)">
+                    <g transform="translate(0, 305.6543)">
+                        <polygon id="Path" stroke="#FFFFFF" stroke-width="2.59949534" points="557.474135 63.0886944 561.299453 52.6913319 577.426171 47.8509194 573.159746 61.6232407"></polygon>
+                        <polygon id="Path" stroke="#FFFFFF" stroke-width="2.59949534" points="575.895129 68.620995 582.352562 53.1097012 596.702336 48.6366323 589.770897 66.5949243"></polygon>
+                        <polygon id="Path" stroke="#FFFFFF" stroke-width="2.59949534" points="531.703709 146.605855 538.161141 131.094561 552.510916 126.621493 545.579477 144.579785"></polygon>
+                        <polygon id="Path" stroke="#FFFFFF" stroke-width="2.59949534" points="552.499671 146.605855 558.957104 131.094561 573.306878 126.621493 566.375439 144.579785"></polygon>
+                        <text id="bullions" font-family="Montserrat-ExtraBoldItalic, Montserrat" font-size="142.972244" font-style="italic" font-weight="700">
+                            <tspan x="0" y="138">bullions</tspan>
+                        </text>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

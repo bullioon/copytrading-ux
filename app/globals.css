@@ -1,26 +1,41 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* tu css abajo */
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #000;
+  color: #fff;
 }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes pulseRing {
+  0% { opacity: .0; transform: scale(0.85); }
+  35% { opacity: .35; }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+@keyframes sixxsPulseGood {
+  0% { box-shadow: 0 0 0 rgba(34,197,94,0); }
+  40% { box-shadow: 0 0 70px rgba(34,197,94,0.28); }
+  100% { box-shadow: 0 0 0 rgba(34,197,94,0); }
+}
+@keyframes sixxsPulseWarn {
+  0% { box-shadow: 0 0 0 rgba(244,63,94,0); }
+  40% { box-shadow: 0 0 70px rgba(244,63,94,0.26); }
+  100% { box-shadow: 0 0 0 rgba(244,63,94,0); }
+}
+@keyframes sixxsPulseInfo {
+  0% { box-shadow: 0 0 0 rgba(59,130,246,0); }
+  40% { box-shadow: 0 0 70px rgba(59,130,246,0.22); }
+  100% { box-shadow: 0 0 0 rgba(59,130,246,0); }
+}
+
+.sixxs-pulse-good { animation: sixxsPulseGood 650ms ease-out 1; }
+.sixxs-pulse-warn { animation: sixxsPulseWarn 650ms ease-out 1; }
+.sixxs-pulse-info { animation: sixxsPulseInfo 650ms ease-out 1; }
