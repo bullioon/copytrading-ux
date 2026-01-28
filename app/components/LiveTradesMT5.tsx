@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { Trade, MarketPrices } from "../hooks/useTradingEngine"
 
 type Tab = "positions" | "orders" | "deals"
@@ -113,7 +113,7 @@ export default function LiveTradesMT5({
   /**
    * IMPORTANT:
    * - POSITIONS: only show trades that actually have a real entryPrice (>0)
-   *   (otherwise you get the phantom rows with "—" and "+0.00")
+   *   (otherwise you get phantom rows)
    */
   const openTradesReady = useMemo(() => {
     return openTrades.filter(t => {
@@ -129,7 +129,23 @@ export default function LiveTradesMT5({
         ? closedTrades
         : []
 
-  const hasOpenButNoneReady = tab === "positions" && openTrades.length > 0 && openTradesReady.length === 0
+  const hasOpenButNoneReady =
+    tab === "positions" && openTrades.length > 0 && openTradesReady.length === 0
+
+  // ✅ Debug opcional: confirma data real que llega al terminal
+  useEffect(() => {
+    const t = trades.find(x => x.status === "open")
+    if (!t) return
+    console.log("[TERMINAL DEBUG]", {
+      pair: t.pair,
+      entry: (t as any).entryPrice,
+      exit: (t as any).exitPrice,
+      synthMarket: market,
+      marketPx: getMarketPrice(t.pair, market),
+      unreal: (t as any).unrealizedPnlUsd,
+      realized: (t as any).pnlUsd,
+    })
+  }, [trades, market])
 
   return (
     <section className="relative border border-green-900/60 bg-black/80 rounded-md font-mono scanlines">
@@ -161,9 +177,7 @@ export default function LiveTradesMT5({
           <tbody>
             {tab === "orders" && <EmptyRow label="NO PENDING ORDERS" />}
 
-            {hasOpenButNoneReady && (
-              <EmptyRow label="WAITING FOR FIRST FILL / PRICE FEED" />
-            )}
+            {hasOpenButNoneReady && <EmptyRow label="WAITING FOR FIRST FILL / PRICE FEED" />}
 
             {!hasOpenButNoneReady && visibleTrades.length === 0 && tab !== "orders" && (
               <EmptyRow label="NO ACTIVE TRADES" />
@@ -173,36 +187,33 @@ export default function LiveTradesMT5({
               const entry = toNum((t as any).entryPrice)
               const exit = toNum((t as any).exitPrice)
 
+              // ✅ PRICE displayed in terminal comes from REAL market feed (UI layer)
               const mpx = getMarketPrice(t.pair, market)
               const currentPrice = Number.isFinite(mpx) && mpx > 0 ? mpx : NaN
 
-              const time = t.status === "open" ? (t as any).openedAt : ((t as any).closedAt ?? (t as any).openedAt)
+              const time =
+                t.status === "open"
+                  ? (t as any).openedAt
+                  : ((t as any).closedAt ?? (t as any).openedAt)
 
-              // If open: show current market price (if available), otherwise show "—"
-              // If closed: show exit if available, else entry
+              // PRICE:
+              // - open: show current market
+              // - closed: show exit (or entry fallback)
               const price =
                 t.status === "open"
                   ? currentPrice
                   : (Number.isFinite(exit) && exit > 0 ? exit : entry)
 
-              // PnL:
-              // - If trade already has pnlUsd, use it.
-              // - If open and pnlUsd missing, compute a *simple* mark-to-market PnL% proxy (not money),
-              //   but only if we have both entry and current price.
-              const enginePnl = toNum((t as any).pnlUsd)
-
-              const mtmProxy =
-                Number.isFinite(entry) &&
-                entry > 0 &&
-                Number.isFinite(currentPrice) &&
-                currentPrice > 0
-                  ? ((currentPrice - entry) / entry) * 100
-                  : NaN
+              // ✅ PnL SOLO desde el engine (NO calculamos con market)
+              // OPEN  -> unrealizedPnlUsd
+              // CLOSED -> pnlUsd (realized)
+              const realized = toNum((t as any).pnlUsd)
+              const unreal = toNum((t as any).unrealizedPnlUsd)
 
               const pnlToShow =
-                Number.isFinite(enginePnl)
-                  ? enginePnl
-                  : (t.status === "open" ? mtmProxy : NaN)
+                t.status === "open"
+                  ? (Number.isFinite(unreal) ? unreal : NaN)
+                  : (Number.isFinite(realized) ? realized : NaN)
 
               const positive = Number.isFinite(pnlToShow) ? pnlToShow >= 0 : true
 
@@ -217,17 +228,23 @@ export default function LiveTradesMT5({
 
                   <td className="opacity-70">{(t as any).traderName ?? "—"}</td>
 
-                  <td className="text-right opacity-80">{fmtFixed(entry, 2)}</td>
+                  <td className="text-right opacity-80">
+                    {Number.isFinite(entry) && entry > 0 ? fmtFixed(entry, 2) : "PENDING"}
+                  </td>
 
-                  <td className="text-right">{fmtFixed(price, 2)}</td>
+                  <td className="text-right">
+                    {Number.isFinite(price) && price > 0 ? fmtFixed(price, 2) : "—"}
+                  </td>
 
                   <td className={`text-right ${positive ? "text-green-400" : "text-red-400"}`}>
-                    {Number.isFinite(pnlToShow) ? (positive ? "+" : "") : ""}
-                    {Number.isFinite(enginePnl)
-                      ? fmtFixed(enginePnl, 2)
-                      : (t.status === "open"
-                          ? (Number.isFinite(mtmProxy) ? `${mtmProxy.toFixed(2)}%` : "—")
-                          : "—")}
+                    {Number.isFinite(pnlToShow) ? (
+                      <>
+                        {pnlToShow >= 0 ? "+" : ""}
+                        {fmtFixed(pnlToShow, 2)}
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               )

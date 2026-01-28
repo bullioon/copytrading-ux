@@ -7,9 +7,47 @@ import { OnboardDial } from "@/app/components/OnboardDial"
 /* ================= TYPES ================= */
 
 type Profile = "BULLION" | "HELLION" | "TORION"
+  // ✅ Access Window (FOMO)
+type AccessPhase = "OPEN" | "CLOSING" | "CLOSED"
+
 
 /* ================= SOCIAL PROOF (PER TIER) ================= */
 
+const COMMUNITY_FEED: Record<Profile, { handle: string; msg: string; vibe?: string }[]> = {
+  BULLION: [
+    { handle: "operator_013", msg: "First deck feels clean. Guardrails actually help.", vibe: "👍" },
+    { handle: "routewatch", msg: "Watched the ops feed 2 mins then entered. Smooth.", vibe: "⚡" },
+    { handle: "minted.b", msg: "BULLION is the best ‘learn without bleeding’ tier.", vibe: "🛡️" },
+  ],
+  HELLION: [
+    { handle: "vol_surgeon", msg: "HELLION during spikes is disgusting (good).", vibe: "🔥" },
+    { handle: "latency_ghost", msg: "Multi-trader routing feels fast af.", vibe: "⚡" },
+    { handle: "spreadcheck", msg: "If you hesitate you chase. Enter and watch it work.", vibe: "👁️" },
+  ],
+  TORION: [
+    { handle: "inst_exec", msg: "TORION posture feels enterprise-grade.", vibe: "🏛️" },
+    { handle: "fundedpath", msg: "Only tier that feels scale-ready.", vibe: "🧠" },
+    { handle: "risk_ops", msg: "Audit trail vibe. You can actually read the system.", vibe: "📡" },
+  ],
+}
+
+const SIXS_NARRATION: Record<Profile, string[]> = {
+  BULLION: [
+    "6XS: Guardrails engaged. Low exposure posture locked.",
+    "6XS: Routing prepared for 2-trader execution.",
+    "6XS: Watching for clean entry layers.",
+  ],
+  HELLION: [
+    "6XS: Volatility posture active. Spread filters armed.",
+    "6XS: Multi-trader routing online. Expect fast transitions.",
+    "6XS: If you wait, you chase. Choose and enter.",
+  ],
+  TORION: [
+    "6XS: Institutional posture loaded. Route diversification online.",
+    "6XS: Execution integrity prioritized. Audit trail enabled.",
+    "6XS: Funded path checks will appear inside the lab.",
+  ],
+}
 const SOCIAL_EVENTS_BY_TIER: Record<Profile, string[]> = {
   BULLION: [
     "BULLION STRATEGY DEPLOYED USING 2 TRADERS",
@@ -32,6 +70,26 @@ const SOCIAL_EVENTS_BY_TIER: Record<Profile, string[]> = {
     "$50,000 FUNDED PATH — ELIGIBILITY CHECK READY",
     "EXECUTION LATENCY OPTIMIZED ACROSS ROUTES",
   ],
+}
+
+// ✅ ADDED: “What you get” (sin tocar tu layout; solo se imprime debajo del summary)
+const WHAT_YOU_GET: Record<Profile, string[]> = {
+  BULLION: ["2-trader copy routing", "Strict risk guardrails", "Live activity feed", "Fast-start templates inside"],
+  HELLION: ["3–5 trader orchestration", "Volatility execution mode", "Spread & latency filters", "Tier switching supported"],
+  TORION: ["Funded path eligibility", "Institutional routing layer", "Route diversification logic", "Advanced multi-trader control"],
+}
+
+// ✅ ADDED: mini tags para que el social feed se sienta “ops” (sin cambiar tus strings)
+function inferTag(s: string): string {
+  const t = s.toUpperCase()
+  if (t.includes("RISK")) return "RISK"
+  if (t.includes("LATENCY") || t.includes("SLIPPAGE")) return "LAT"
+  if (t.includes("ROUTE") || t.includes("ROUTING")) return "ROUTE"
+  if (t.includes("VOLATILITY") || t.includes("SPREAD")) return "VOL"
+  if (t.includes("FUNDED") || t.includes("INSTITUTIONAL")) return "INST"
+  if (t.includes("DEPLOYED") || t.includes("ENTRY") || t.includes("EXECUTION")) return "EXEC"
+  if (t.includes("DEPOSIT") || t.includes("GRANTED") || t.includes("ACCESS")) return "OPS"
+  return "SYS"
 }
 
 /* ================= CONFIG ================= */
@@ -130,6 +188,14 @@ function fmtTime(sec: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
 
+
+// ✅ ADDED
+function fmtSec(sec: number) {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+}
+
 /* ================= COMPONENT ================= */
 
 export default function OnboardingPage() {
@@ -160,6 +226,178 @@ export default function OnboardingPage() {
   // Micro status like dash
   const [status, setStatus] = useState<"idle" | "arming" | "live">("idle")
 
+const [accessPhase, setAccessPhase] = useState<AccessPhase>("OPEN")
+const [accessCountdown, setAccessCountdown] = useState(90) // seconds
+const [pressure, setPressure] = useState(42)
+
+  // ✅ ADDED: expand “more info” sin modal (no mueve tu vibe)
+  const [moreOpen, setMoreOpen] = useState(false)
+
+    // ✅ COMMUNITY + 6XS (states)
+  const [chatIndex, setChatIndex] = useState(0)
+
+  const [sixsOn, setSixsOn] = useState(true)
+  const [sixsLine, setSixsLine] = useState(0)
+  const [sixsLog, setSixsLog] = useState<string[]>([])
+
+  /* ================= EFFECTS ================= */
+
+/* ===== SOCIAL FEED (PER TIER) ===== */
+useEffect(() => {
+  setTimestamp(getUTCTimestamp())
+  setSocialIndex(0)
+
+  const i = setInterval(() => {
+    setSocialIndex(s => (s + 1) % SOCIAL_EVENTS_BY_TIER[selected].length)
+    setTimestamp(getUTCTimestamp())
+  }, 3000)
+
+  return () => clearInterval(i)
+}, [selected])
+
+/* ===== COMMUNITY TICK (PER TIER) ===== */
+useEffect(() => {
+  setChatIndex(0)
+
+  const t = setInterval(() => {
+    setChatIndex(i => (i + 1) % COMMUNITY_FEED[selected].length)
+  }, 4200)
+
+  return () => clearInterval(t)
+}, [selected])
+
+/* ===== 6XS RESET ON TIER CHANGE ===== */
+useEffect(() => {
+  setSixsLine(0)
+  setSixsLog([])
+}, [selected])
+
+/* ===== 6XS NARRATION TICK ===== */
+useEffect(() => {
+  if (!sixsOn) return
+
+  const t = setInterval(() => {
+    setSixsLine(prev => {
+      const line =
+        SIXS_NARRATION[selected][prev % SIXS_NARRATION[selected].length]
+
+      setSixsLog(log => [line, ...log].slice(0, 5))
+      return prev + 1
+    })
+  }, 3200)
+
+  return () => clearInterval(t)
+}, [sixsOn, selected])
+
+/* ===== TIER SWITCH ANIMATION ===== */
+useEffect(() => {
+  setTierAnim(true)
+  const t = setTimeout(() => setTierAnim(false), 520)
+  return () => clearTimeout(t)
+}, [selected])
+
+/* ===== STATUS CYCLE ===== */
+useEffect(() => {
+  const t = setInterval(() => {
+    setStatus(s =>
+      s === "idle" ? "arming" : s === "arming" ? "live" : "arming"
+    )
+  }, 2600)
+
+  return () => clearInterval(t)
+}, [])
+
+/* ===== OPS METRICS TICK ===== */
+useEffect(() => {
+  const t = setInterval(() => {
+    setUptimeSec(s => s + 1)
+    setIntegrity(v => clamp(v + 0.02, 70, 99))
+    setStability(v =>
+      clamp(v + (status === "live" ? 0.06 : 0.02), 60, 98)
+    )
+  }, 1000)
+
+  return () => clearInterval(t)
+}, [status])
+
+/* ===== ACCESS WINDOW (FOMO) ===== */
+useEffect(() => {
+  const t = setInterval(() => {
+    setAccessCountdown(s => {
+      const next = s - 1
+      return next <= 0 ? 90 : next
+    })
+
+    setPressure(p => clamp(p + 0.4, 15, 95))
+
+    setAccessPhase(() => {
+      if (accessCountdown <= 20) return "CLOSING"
+      return "OPEN"
+    })
+  }, 1000)
+
+  return () => clearInterval(t)
+}, [accessCountdown])
+
+/* ✅ COMMUNITY tick (PER TIER) */
+useEffect(() => {
+  setChatIndex(0)
+  const t = setInterval(() => {
+    setChatIndex(i => (i + 1) % COMMUNITY_FEED[selected].length)
+  }, 4200)
+
+  return () => clearInterval(t)
+}, [selected])
+
+/* ✅ 6XS reset on tier change */
+useEffect(() => {
+  setSixsLine(0)
+  setSixsLog([])
+}, [selected])
+
+/* ✅ 6XS narration tick */
+useEffect(() => {
+  if (!sixsOn) return
+
+  const t = setInterval(() => {
+    // usamos el updater para no depender de sixsLine en deps
+    setSixsLine(prev => {
+      const line = SIXS_NARRATION[selected][prev % SIXS_NARRATION[selected].length]
+      setSixsLog(log => [line, ...log].slice(0, 5))
+      return prev + 1
+    })
+  }, 3200)
+
+  return () => clearInterval(t)
+}, [sixsOn, selected])
+
+/* ===== TIER SWITCH ANIM ===== */
+useEffect(() => {
+  setTierAnim(true)
+  const t = setTimeout(() => setTierAnim(false), 520)
+  return () => clearTimeout(t)
+}, [selected])
+
+/* ===== STATUS CYCLE ===== */
+useEffect(() => {
+  const t = setInterval(() => {
+    setStatus(s => (s === "idle" ? "arming" : s === "arming" ? "live" : "arming"))
+  }, 2600)
+
+  return () => clearInterval(t)
+}, [])
+
+/* ===== OPS METRICS TICK ===== */
+useEffect(() => {
+  const t = setInterval(() => {
+    setUptimeSec(s => s + 1)
+    setIntegrity(v => clamp(v + 0.02, 70, 99))
+    setStability(v => clamp(v + (status === "live" ? 0.06 : 0.02), 60, 98))
+  }, 1000)
+
+  return () => clearInterval(t)
+}, [status])
+
   /* ===== GRID BACKGROUND ===== */
   useEffect(() => {
     const cols = 12
@@ -175,7 +413,6 @@ export default function OnboardingPage() {
 
     return () => clearInterval(i)
   }, [])
-
   /* ===== SOCIAL FEED (PER TIER) ===== */
   useEffect(() => {
     setTimestamp(getUTCTimestamp())
@@ -188,6 +425,36 @@ export default function OnboardingPage() {
 
     return () => clearInterval(i)
   }, [selected])
+
+  /* ✅ COMMUNITY tick */
+  useEffect(() => {
+    setChatIndex(0)
+
+    const t = setInterval(() => {
+      setChatIndex(i => (i + 1) % COMMUNITY_FEED[selected].length)
+    }, 4200)
+
+    return () => clearInterval(t)
+  }, [selected])
+
+  /* ✅ 6XS reset on tier change */
+  useEffect(() => {
+    setSixsLine(0)
+    setSixsLog([])
+  }, [selected])
+
+  /* ✅ 6XS narration tick */
+  useEffect(() => {
+    if (!sixsOn) return
+
+    const t = setInterval(() => {
+      const line = SIXS_NARRATION[selected][sixsLine % SIXS_NARRATION[selected].length]
+      setSixsLog(prev => [line, ...prev].slice(0, 5))
+      setSixsLine(n => n + 1)
+    }, 3200)
+
+    return () => clearInterval(t)
+  }, [sixsOn, selected, sixsLine])
 
   /* ===== TIER SWITCH ANIM ===== */
   useEffect(() => {
@@ -228,7 +495,22 @@ export default function OnboardingPage() {
     return `radial-gradient(1100px 320px at 12% 0%, rgba(34,211,238,0.14), ${active.accentGlow}, rgba(0,0,0,0.55))`
   }, [active.accentGlow])
 
-  const goDashboard = () => router.push(`/dashboard?mode=${selected.toLowerCase()}`)
+const goDashboard = async () => {
+  // 1) guarda tier (active:false) en Firestore via API
+  await fetch("/api/access/set-tier", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier: selected }),
+  }).catch(() => {})
+
+  // 2) entra al router inteligente
+  router.push("/enter")
+}
+
+  // ✅ ADDED: variables para social tag sin tocar tu feed
+  const liveLine = SOCIAL_EVENTS_BY_TIER[selected][socialIndex]
+  const liveTag = inferTag(liveLine)
 
   return (
     <main
@@ -281,6 +563,13 @@ export default function OnboardingPage() {
             {statusChip.label}
           </div>
 
+{/* ✅ ADDED: Access Window chip (desktop) */}
+<div className="hidden md:inline-flex rounded-full border border-white/15 bg-black/35 px-3 py-1 text-[10px] tracking-widest text-white/80">
+ACCESS <span className="ml-2 text-white/90 font-semibold">{accessPhase}</span>
+<span className="ml-2 text-white/50">·</span>
+<span className="ml-2 text-white/85">{fmtSec(accessCountdown)}</span>
+</div>
+
           <button
             className="flex items-center gap-2 px-4 py-1.5 rounded-md border border-white/15
                        text-xs tracking-widest text-white/80
@@ -301,7 +590,7 @@ export default function OnboardingPage() {
             <div
               className="rounded-3xl border border-white/10 bg-black/45 px-6 py-5"
               style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.05), 0 0 60px ${active.accentGlow}` }}
-            >
+            > 
               <div className="flex items-center gap-5">
                 <img
                   src={active.logo}
@@ -311,6 +600,7 @@ export default function OnboardingPage() {
                     active.glow,
                     tierAnim ? "scale-110 opacity-100" : "scale-100 opacity-95",
                   ].join(" ")}
+                  
                 />
 
                 <div className="min-w-0">
@@ -329,6 +619,16 @@ export default function OnboardingPage() {
                       stability <span className="text-white/85 font-semibold">{fmtPct(stability)}</span>
                     </span>
                   </div>
+
+                  
+
+                  {/* ✅ ADDED: chips de valor (no mueven nada, se ven “perro”) */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-white/55">
+                    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">execution tooling</span>
+                    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">guardrails on</span>
+                    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">tier switch supported</span>
+                    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">start in 2s</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -338,7 +638,27 @@ export default function OnboardingPage() {
           <div className="text-center mb-10">
             <h1 className="text-5xl md:text-6xl font-semibold tracking-tight">STRATEGY DECK</h1>
             <p className="mt-3 text-sm tracking-widest uppercase text-white/50">Live execution environment</p>
+
+            {/* ✅ ADDED: clarity + FOMO limpio (sin inventar números) */}
+            <p className="mt-4 text-[12px] md:text-[13px] tracking-widest text-white/60">
+              Pick a tier → load the deck → enter the lab. Access opens in waves. If the lab is live, move now.
+            </p>
           </div>
+
+<div className="mt-6 rounded-2xl border border-white/10 bg-black/45 px-5 py-4">
+  <div className="text-[10px] tracking-widest text-white/45">WHAT YOU&apos;RE ENTERING</div>
+  <div className="mt-2 text-[12px] tracking-widest text-white/70 leading-relaxed">
+    This is a live execution lab. You load a strategy deck, choose a tier, and the system routes copy execution with
+    built-in risk guardrails and an activity feed so you can see what&apos;s happening.
+  </div>
+
+  <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white/55">
+    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">not financial advice</span>
+    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">execution tooling</span>
+    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">copy routing</span>
+    <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1">guardrails on</span>
+  </div>
+</div>
 
           {/* SOCIAL */}
           <div
@@ -349,15 +669,40 @@ export default function OnboardingPage() {
               <div>
                 <div className="text-[10px] tracking-widest text-white/35 mb-1">LIVE SYSTEM ACTIVITY</div>
                 <div className="font-mono text-sm text-emerald-300">
-                  {timestamp} ▸ {SOCIAL_EVENTS_BY_TIER[selected][socialIndex]}
+                  {timestamp} ▸ {liveLine}
+                </div>
+
+                {/* ✅ ADDED: micro “why it matters” 1 liner (no mueve el bloque) */}
+                <div className="mt-1 text-[10px] tracking-widest text-white/40">
+                  status feed reflects routing + risk locks while you select a tier
                 </div>
               </div>
 
               <div className="rounded-xl border border-white/10 bg-black/45 px-3 py-2">
                 <div className="text-[10px] tracking-widest text-white/45">MODE</div>
                 <div className="mt-1 text-[11px] text-white/80 font-semibold">ONBOARD</div>
+
+                {/* ✅ ADDED: tag chip (ops vibe) */}
+                <div className="mt-2 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[9px] tracking-widest text-white/70">
+                  {liveTag}
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* ✅ ADDED: HOW IT WORKS (debajo del social, sin mover tu main panel) */}
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { k: "01", t: "Pick tier", d: "Access level + routing posture." },
+              { k: "02", t: "Load deck", d: "System arms filters & guardrails." },
+              { k: "03", t: "Enter lab", d: "Dashboard preloaded, start in 2s." },
+            ].map(x => (
+              <div key={x.k} className="rounded-2xl border border-white/10 bg-black/45 px-4 py-4">
+                <div className="text-[10px] tracking-widest text-white/45">{x.k}</div>
+                <div className="mt-1 text-[12px] tracking-widest text-white/80 font-semibold">{x.t}</div>
+                <div className="mt-1 text-[11px] tracking-widest text-white/55">{x.d}</div>
+              </div>
+            ))}
           </div>
 
           {/* MAIN PANEL */}
@@ -427,6 +772,52 @@ export default function OnboardingPage() {
               })}
             </div>
 
+            {/* TIER DIFFERENCE */}
+<div className="mt-5 rounded-2xl border border-white/10 bg-black/45 px-5 py-4">
+  <div className="text-[10px] tracking-widest text-white/45">HOW TO CHOOSE</div>
+
+  <div className="mt-3 grid gap-2 md:grid-cols-3">
+    <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+      <div className="text-[11px] tracking-widest text-white/80 font-semibold">BULLION</div>
+      <div className="mt-1 text-[10px] tracking-widest text-white/55">
+        First deck. Learn the flow. Strict guardrails.
+      </div>
+    </div>
+
+    <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+      <div className="text-[11px] tracking-widest text-white/80 font-semibold">HELLION</div>
+      <div className="mt-1 text-[10px] tracking-widest text-white/55">
+        Faster routing. More traders. Volatility-focused.
+      </div>
+    </div>
+
+    <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+      <div className="text-[11px] tracking-widest text-white/80 font-semibold">TORION</div>
+      <div className="mt-1 text-[10px] tracking-widest text-white/55">
+        Institutional layer + funded path eligibility.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div className="mt-5 rounded-2xl border border-white/10 bg-black/45 px-5 py-4">
+  <div className="text-[10px] tracking-widest text-white/45">HOW TO CHOOSE (LIVE)</div>
+
+  <div className={`mt-2 text-[12px] tracking-widest font-semibold ${active.text}`}>
+    {selected} — {active.short}
+  </div>
+
+  <div className="mt-2 text-[10px] tracking-widest text-white/55">
+    Minimum deposit: ${active.priceUSD} · You can switch tier later.
+  </div>
+
+  <div className="mt-3 text-[10px] tracking-widest text-white/40">
+    Pick fast. The lab starts moving as soon as you enter.
+  </div>
+</div>
+
+
             {/* DESCRIPTION */}
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 px-6 py-5">
               <div className="flex items-center justify-between gap-3">
@@ -436,6 +827,19 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
+              <div className="mt-5 rounded-2xl border border-white/10 bg-black/45 px-5 py-4">
+  <div className="text-[10px] tracking-widest text-white/45">WHY THIS WINS</div>
+  <div className="mt-2 grid gap-2">
+    {[
+      "You don’t start from zero: decks are pre-wired with routing + risk posture.",
+      "You can observe before you scale: the feed shows what the system is doing.",
+      "You can switch tiers later: same flow, different execution capacity.",
+    ].map(s => (
+      <div key={s} className="text-[11px] tracking-widest text-white/60">▸ {s}</div>
+    ))}
+  </div>
+</div>
+
               <pre className="mt-3 font-mono text-[13px] text-white/75 whitespace-pre-wrap">{active.description}</pre>
 
               <div className="mt-4 flex flex-wrap gap-2 text-[10px] text-white/55">
@@ -443,6 +847,48 @@ export default function OnboardingPage() {
                 <span className="rounded-full border border-white/10 bg-black/35 px-3 py-1">risk guard enabled</span>
                 <span className="rounded-full border border-white/10 bg-black/35 px-3 py-1">you can change tier later</span>
               </div>
+
+              {/* ✅ ADDED: WHAT YOU GET (per tier) debajo del summary; no cambia tu layout */}
+              <div className="mt-5 grid gap-2">
+                {WHAT_YOU_GET[selected].map(b => (
+                  <div key={b} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/35 px-3 py-2">
+                    <span className={`h-2 w-2 rounded-full ${active.grid}`} />
+                    <span className="text-[11px] tracking-widest text-white/70">{b}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* ✅ ADDED: botón expand “MORE DETAILS” inline (cero overlays) */}
+              <button
+                type="button"
+                onClick={() => setMoreOpen(v => !v)}
+                className="mt-4 w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-[10px] tracking-widest text-white/70 hover:bg-white/5"
+              >
+                {moreOpen ? "HIDE DETAILS ▴" : "MORE DETAILS ▾"}
+              </button>
+
+              {moreOpen ? (
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/35 px-4 py-3">
+                  <div className="text-[10px] tracking-widest text-white/45">INSIDE THE LAB</div>
+                  <div className="mt-2 grid gap-1">
+                    {[
+                      "Top Strategies Working — start in 2 seconds",
+                      "Live activity feed — routing events in real time",
+                      "Guardrails — default protections enabled",
+                      "Tier switch — keep flow, change profile later",
+                    ].map(x => (
+                      <div key={x} className="text-[11px] tracking-widest text-white/60">
+                        ▸ {x}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* FOMO clean */}
+                  <div className="mt-3 text-[10px] tracking-widest text-white/40">
+                    When the system is live, the first move is usually missed by people still “thinking”.
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* PRIMARY BUTTON (panel) */}
@@ -468,10 +914,29 @@ export default function OnboardingPage() {
               />
               <span className="relative z-10">{step === 1 ? "CONTINUE ▸" : "ENTER STRATEGY LAB"}</span>
 
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+
+  {[
+
+    { t: "Top Strategies Working", d: "Start copying in ~2 seconds." },
+    { t: "Live Ops Feed", d: "See routing, risk locks, and execution events." },
+    { t: "Guardrails", d: "Default risk protections active while you learn." },
+  ].map(x => (
+    <div key={x.t} className="rounded-2xl border border-white/10 bg-black/45 px-4 py-4">
+      <div className="text-[12px] tracking-widest text-white/80 font-semibold">{x.t}</div>
+      <div className="mt-1 text-[11px] tracking-widest text-white/55">{x.d}</div>
+    </div>
+  ))}
+</div>
               <div className="relative z-10 mt-1 text-[10px] tracking-widest text-white/55 font-normal">
                 {step === 1 ? "Pick a tier to continue" : "Fast start available inside dashboard"}
               </div>
             </button>
+
+            {/* ✅ ADDED: FOMO note bajo el CTA (aditivo, no cambia nada) */}
+            <div className="mt-3 text-center text-[10px] tracking-widest text-white/45">
+              Access opens in waves · If the lab is live, the best entries happen before you “feel ready”.
+            </div>
 
             {/* MICRO FOOT NOTE */}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">

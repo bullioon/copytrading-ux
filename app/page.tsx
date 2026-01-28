@@ -1,56 +1,10 @@
-"use client"
+import { Suspense } from "react"
+import HomeClient from "./HomeClient"
 
-import { useMemo } from "react"
-import { useSearchParams } from "next/navigation"
-import DashboardView from "@/app/components/DashboardView"
-
-/* ================= TYPES ================= */
-
-export type Tier = "BULLION" | "HELLION" | "TORION"
-
-export type Account = {
-  tier: Tier
-  baseBalance: number
-  balance: number
-  funded: boolean
-}
-
-/* ================= ACCOUNT FACTORY ================= */
-
-function getAccountByMode(mode: string): Account {
-  if (mode === "hellion") {
-    return {
-      tier: "HELLION",
-      baseBalance: 1500,
-      balance: 1500,
-      funded: false,
-    }
-  }
-
-  if (mode === "torion") {
-    return {
-      tier: "TORION",
-      baseBalance: 50000,
-      balance: 50000,
-      funded: true,
-    }
-  }
-
-  return {
-    tier: "BULLION",
-    baseBalance: 300,
-    balance: 300,
-    funded: false,
-  }
-}
-
-/* ================= ENTRY ================= */
-
-export default function DashboardEntry() {
-  const params = useSearchParams()
-  const mode = params.get("mode") ?? "bullion"
-
-  const account = useMemo(() => getAccountByMode(mode), [mode])
-
-  return <DashboardView account={account} />
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <HomeClient />
+    </Suspense>
+  )
 }

@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation"
 import type { StrategyEvent } from "@/app/types/strategy"
 import type { Account, Tier } from "@/app/types/account"
 
-import { useMarketPrices } from "../hooks/useMarketPrices"
+import useMarketPrices from "../hooks/useMarketPrices"
 import { useTraders, Role } from "../hooks/useTraders"
 import { useTradingEngine } from "../hooks/useTradingEngine"
 import { useStrategyHealth } from "../hooks/useStrategyHealth"
 import { useEquityDrawdown } from "../hooks/useEquityDrawdown"
 import { useEnginePolicy } from "../hooks/useEnginePolicy"
+
 
 import BullionsHeader from "./BullionsHeader"
 import LiveTradesMT5 from "./LiveTradesMT5"
@@ -982,10 +983,9 @@ const renderPresetButton = (id: StartupPresetId) => {
 
 /* ================= DASHBOARD ================= */
 
-export default function DashboardView({ account }: { account: Account }) {
+export default function DashboardView({ account: walletAccount }: { account: Account }) {
   const router = useRouter()
-  const market = useMarketPrices()
-  const theme = TIER_THEME[account.tier]
+  const theme = TIER_THEME[walletAccount.tier]
 
   const VERSION = "v6.9.0"
 
@@ -1162,10 +1162,7 @@ const [planBTraderId, setPlanBTraderId] = useState<number | null>(null)
 const healthStatus = useStrategyHealth({
   pnl: drawdown,
   config: { warningDD: planBTrigger + 2, criticalDD: planBTrigger },
-})
-
-
-/* ================= CAPITAL ================= */
+})/* ================= CAPITAL ================= */
 
 // ✅ saldo asignado al engine (lo “bloqueado” para correr estrategia)
 const [allocatedUsd, setAllocatedUsd] = useState<number>(0)
@@ -1173,40 +1170,54 @@ const [allocatedUsd, setAllocatedUsd] = useState<number>(0)
 /* ===== RISK BRAKE OVERRIDE ===== */
 const [disableRiskBrake, setDisableRiskBrake] = useState(false)
 
-/* ================= REAL BALANCE (FUERA DEL ENGINE) ================= */
+/* ================= WALLET REAL (TOTAL, NUNCA DEPENDE DE ALLOCATION) ================= */
 /**
- * ✅ ESTE es el saldo “real” que existe aunque el engine esté apagado.
- * De aquí sale el MAX del modal.
+ * ✅ Este es el saldo REAL del usuario (wallet/back-end) + tus bullions internos.
+ * ⚠️ IMPORTANTE: si por un render llega 0 (undefined/api lag), NO pisamos el último valor bueno.
  */
-const realBalanceUsd = useMemo(() => {
-  const base = Number(account?.baseBalance ?? 0)
+const [walletBalanceUsd, setWalletBalanceUsd] = useState<number>(0)
+
+useEffect(() => {
+  const base = Number(walletAccount?.baseBalance ?? 0)
   const bullion = Number(bullionsBalanceUsd ?? 0)
-  return Math.max(0, (Number.isFinite(base) ? base : 0) + (Number.isFinite(bullion) ? bullion : 0))
-}, [account?.baseBalance, bullionsBalanceUsd])
+
+  const total = Math.max(
+    0,
+    (Number.isFinite(base) ? base : 0) +
+      (Number.isFinite(bullion) ? bullion : 0)
+  )
+
+  // ✅ anti-0: si ya tenías algo bueno, no lo mates con 0 temporal
+  setWalletBalanceUsd(prev => {
+    if (total <= 0) return prev
+    // si sube (depósitos reales/bullions) actualiza
+    if (total > prev) return total
+    // si baja, normalmente NO debería bajar por allocation (solo por withdrawals reales)
+    // si quieres permitir bajadas reales luego, aquí meterías una flag de "withdraw"
+    return prev
+  })
+}, [walletAccount?.baseBalance, bullionsBalanceUsd])
+
+const realBalanceUsd = walletBalanceUsd
 
 /* ===== AVAILABLE FOR ALLOCATION (NO DEPENDE DEL ENGINE) ===== */
-const availableUsd = useMemo(() => {
-  // si quieres restar “lo ya asignado” cuando NO hay run activo, hazlo aquí
-  // por ahora: disponible = saldo real completo
-  return realBalanceUsd
-}, [realBalanceUsd])
+const availableUsd = run.active ? Math.max(0, realBalanceUsd - allocatedUsd) : realBalanceUsd
 
-/* ================= DRAWDOWN (FUERA DEL ENGINE) ================= */
-/**
- * ✅ usa equityBuffer (UI) o 0 si no hay historial.
- * NO uses metrics.drawdownPct para policy porque te crea dependencia circular.
- */
-const drawdownPctUi = useMemo(() => {
-  const arr = equityBuffer?.length ? equityBuffer : []
-  if (arr.length < 2) return 0
-  let peak = arr[0]
-  for (const v of arr) if (v > peak) peak = v
-  const last = arr[arr.length - 1]
-  if (!Number.isFinite(peak) || peak <= 0) return 0
-  return ((last - peak) / peak) * 100
-}, [equityBuffer])
+/* ================= ENGINE ACCOUNT (SEPARADO DEL WALLET) ================= */
+// ✅ El engine usa allocatedUsd SOLO cuando está corriendo.
+// ✅ Cuando está apagado, le damos el balance real para que NO muestre 0.
 
-/* ===== POLICY (REAL, SIN CICLO) ===== */
+const engineAccount = useMemo(() => {
+  
+  const baseBalance = run.active ? allocatedUsd : realBalanceUsd
+  return {
+    baseBalance,
+    active: run.active,
+  }
+}, [run.active, allocatedUsd, realBalanceUsd])
+
+
+/* ================= POLICY (SIN CICLOS) ================= */
 
 const [engineDdPct, setEngineDdPct] = useState(0)
 
@@ -1216,23 +1227,35 @@ const policy = useEnginePolicy({
   disableRiskBrake,
 })
 
+
 /* ================= ENGINE INPUT ================= */
 /**
- * ✅ El engine SOLO opera con allocatedUsd cuando run.active.
- * Cuando run.active = false, el engine puede mostrar el saldo real (UI),
- * pero NO opera porque account.active = run.active.
+ * El engine SOLO opera con allocatedUsd cuando run.active.
+ * Cuando run.active = false, el engine puede mostrar saldo real,
+ * pero NO opera.
  */
+
 const engineBaseBalance = run.active ? allocatedUsd : realBalanceUsd
 
+console.log("[ALLOC]", {
+  runActive: run.active,
+  allocatedUsd,
+  realBalanceUsd,
+  engineBaseBalance,
+})
+
+/* ================= ENGINE ================= */
+
+
+const market = useMarketPrices() // ✅ REAL
+
+
 const engine = useTradingEngine({
-  account: {
-    baseBalance: engineBaseBalance,
-    active: true,        // ✅ FORZADO PARA DEBUG
-  },
+  account: engineAccount,   // ❗ NO uses `account` real aquí
   traders: engineTraders,
   market,
   policy,
-  runActive: true,       // ✅ FORZADO PARA DEBUG
+  runActive: run.active,
   disableRiskBrake,
 })
 
@@ -1240,17 +1263,95 @@ const engine = useTradingEngine({
 const { metrics, trades, status } = engine
 
 useEffect(() => {
+  const open = trades.filter(t => t.status === "open")
+  console.log("[UI TRADES CHECK]", {
+    total: trades.length,
+    open: open.length,
+    sampleOpen: open[0],
+    sampleAll: trades[0],
+  })
+}, [trades])
+
+
+/* ================= UI TRADES DEBUG ================= */
+
+useEffect(() => {
+  const open = trades.filter(t => t.status === "open")
+  console.log("[UI TRADES]", {
+    total: trades.length,
+    open: open.length,
+    sample: open[0],
+  })
+}, [trades])
+
+/* ================= TRADE TRANSITIONS (OPEN / CLOSE) ================= */
+
+const prevTradesRef = useRef<typeof trades>([])
+
+useEffect(() => {
+  const prev = prevTradesRef.current
+  const curr = trades
+
+  const prevById = new Map(prev.map(t => [t.id, t]))
+  const currById = new Map(curr.map(t => [t.id, t]))
+
+  /* ===== OPEN (NUEVO) ===== */
+  for (const t of curr) {
+    if (!prevById.has(t.id) && t.status === "open") {
+      playTone?.("good")
+      x9(`Opened ${t.pair} ${t.direction} · risk ${fmtUsd(t.riskUsd)}`, +1)
+
+      pushEvent({
+        type: "SYSTEM",
+        label: `OPEN ${t.pair} ${t.direction}`,
+        impact: +1,
+      })
+
+      // 🔥 aquí luego conectas proximity / speed / truster
+      // reactToTrade?.({ type: "OPEN", trade: t })
+    }
+  }
+
+  /* ===== CLOSE (open → closed) ===== */
+  for (const p of prev) {
+    const t = currById.get(p.id)
+    if (p.status === "open" && t && t.status === "closed") {
+      const impact = t.pnlUsd > 0 ? 1 : t.pnlUsd < 0 ? -1 : 0
+
+      playTone?.(impact > 0 ? "good" : impact < 0 ? "warn" : "info")
+
+      x9(
+        `Closed ${t.pair} · ${t.closeReason} · PnL ${fmtUsd(t.pnlUsd, { sign: true })}`,
+        impact
+      )
+
+      pushEvent({
+        type: "SYSTEM",
+        label: `CLOSE ${t.pair} ${t.closeReason} ${fmtUsd(t.pnlUsd, { sign: true })}`,
+        impact,
+      })
+
+      // 🔥 aquí luego conectas proximity / speed / truster
+      // reactToTrade?.({ type: "CLOSE", trade: t })
+    }
+  }
+
+  prevTradesRef.current = curr
+}, [trades, playTone])
+
+/* ================= ENGINE VISUAL CHECK ================= */
+
+useEffect(() => {
   console.log("[ENGINE VISUAL CHECK]", {
-    engineStatus: status,                 // <-- este es el real del engine (idle/copying)
+    engineStatus: status,
     runActive: run.active,
-    accountActivePassed: true,            // si lo forzaste a true
     traders: engineTraders.length,
     marketOk: !!market,
     baseBalance: engineBaseBalance,
     allowTrading: policy.allowTrading,
     paused: metrics.paused,
     openTrades: trades.filter(t => t.status === "open").length,
-    synthBtc: metrics.synthPrices.btc,
+    synthBtc: metrics.synthPrices?.btc,
   })
 }, [
   status,
@@ -1260,19 +1361,23 @@ useEffect(() => {
   engineBaseBalance,
   policy.allowTrading,
   metrics.paused,
-  metrics.synthPrices.btc,
-  trades,
+  metrics.synthPrices?.btc,
+  trades.length,
 ])
 
+/* ================= DRAWDOWN MIRROR ================= */
 
 useEffect(() => {
-  const dd = Number.isFinite(engine.metrics.drawdownPct) ? engine.metrics.drawdownPct : 0
+  const dd = Number.isFinite(metrics.drawdownPct) ? metrics.drawdownPct : 0
   setEngineDdPct(dd)
-}, [engine.metrics.drawdownPct])
+}, [metrics.drawdownPct])
 
-/* ===== OPEN TRADES ===== */
-const openTrades = useMemo(() => trades.filter(t => t.status === "open"), [trades])
+/* ================= OPEN TRADES (UI) ================= */
 
+const openTrades = useMemo(
+  () => trades.filter(t => t.status === "open"),
+  [trades]
+)
 
 /* ================= SIGNALS (PSYCHO) ================= */
 
@@ -1341,16 +1446,21 @@ useEffect(() => {
   })
 }, [specialHot, drawdown, lossStreak, equityFlatMs])
 
+/* ===== BASELINE (BALANCE INICIAL FIJO, SIEMPRE WALLET REAL) ===== */
+useEffect(() => {
+  // Si no hay run, limpia baseline para que el próximo run vuelva a fijarlo
+  if (!run.active) {
+    if (baselineUsd !== null) setBaselineUsd(null)
+    return
+  }
 
-  /* ===== BASELINE (BALANCE INICIAL FIJO) ===== */
-  useEffect(() => {
-    if (baselineUsd !== null) return
-    if (!metrics) return
+  // Al iniciar un run: baseline = wallet real (NO allocated)
+  if (baselineUsd === null && realBalanceUsd > 0) {
+    setBaselineUsd(realBalanceUsd)
+  }
+}, [run.active, baselineUsd, realBalanceUsd])
 
-    const lastEquity = equityBuffer.length > 0 ? equityBuffer[equityBuffer.length - 1] : metrics.balance
-    const base = lastEquity + bullionsBalanceUsd
-    setBaselineUsd(base)
-  }, [baselineUsd, metrics, equityBuffer, bullionsBalanceUsd])
+
 
 /* ===== 6XS STATE MACHINE ===== */
 const sixxsState = useMemo(() => {
@@ -1380,54 +1490,19 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [sixxsState])
 
+const enginePnl = Number.isFinite(metrics?.pnl) ? Number(metrics.pnl) : 0
 
-  /* ===== BALANCE TONE ===== */
-  const currentTotalUsd =
-    (equityBuffer.length ? equityBuffer[equityBuffer.length - 1] : metrics?.balance ?? 0) + bullionsBalanceUsd
+// ✅ lo que el usuario siente como “balance”: wallet real + pnl del engine
+const currentTotalUsd = realBalanceUsd + enginePnl
 
-  const ref = baselineUsd ?? currentTotalUsd
-  const deltaFromBase = currentTotalUsd - ref
+const ref = baselineUsd ?? realBalanceUsd
+const deltaFromBase = currentTotalUsd - ref
 
-  const balanceTone =
-    deltaFromBase < 0 ? "text-rose-300" : deltaFromBase > 0 ? "text-emerald-300" : "text-white/90"
+const balanceTone =
+  deltaFromBase < 0 ? "text-rose-300" :
+  deltaFromBase > 0 ? "text-emerald-300" :
+  "text-white/90"
 
-  /* ===== TRADE FEEDBACK: CLOSED ===== */
-  const seenClosedIdsRef = useRef<Set<number>>(new Set())
-
-  useEffect(() => {
-    if (!trades || trades.length === 0) return
-
-    for (const t of trades) {
-      if (t.status !== "closed") continue
-      if (seenClosedIdsRef.current.has(t.id)) continue
-      seenClosedIdsRef.current.add(t.id)
-
-      const kind: SixXSKind = t.pnlUsd > 0 ? "good" : t.pnlUsd < 0 ? "warn" : "info"
-      playTone(kind)
-
-      x9(`Trade closed → ${t.pair} ${fmtUsd(t.pnlUsd, { sign: true })} USD`, t.pnlUsd > 0 ? 1 : t.pnlUsd < 0 ? -1 : 0)
-
-      markActivity()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, playTone])
-
-  /* ===== TRADE FEEDBACK: OPEN ===== */
-  const seenOpenIdsRef = useRef<Set<number>>(new Set())
-
-    useEffect(() => {
-    if (!trades || trades.length === 0) return
-
-    for (const t of trades) {
-      if (t.status !== "open") continue
-      if (seenOpenIdsRef.current.has(t.id)) continue
-      seenOpenIdsRef.current.add(t.id)
-
-      markActivity()
-      x9(`Entry → ${t.pair} ${t.direction} · armed`, 1)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades])
 
   /* ===== 6XS HEARTBEAT + NEXT DECISION COUNTDOWN ===== */
   useEffect(() => {
@@ -1479,30 +1554,6 @@ const t = setInterval(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.active, status, policy])
 
-  /* ===== EQUITY BUFFER (seed) ===== */
-  useEffect(() => {
-    if (!metrics) return
-    setEquityBuffer(prev => {
-      if (prev.length >= 2) return prev
-      const base = balanceSeedUsd ?? metrics.balance
-      return [base * 0.995, base]
-    })
-  }, [metrics, balanceSeedUsd])
-
-  /* ===== EQUITY BUFFER (append) ===== */
-  useEffect(() => {
-  if (!metrics) return
-  setEquityBuffer(prev => {
-    const last = prev[prev.length - 1]
-    const nextVal = metrics.balance
-
-    // ✅ en vez de ===, usamos un epsilon
-    if (last != null && Math.abs(last - nextVal) < 0.005) return prev
-
-    const next = [...prev, nextVal]
-    return next.length > 160 ? next.slice(-160) : next
-  })
-}, [metrics.balance, metrics])
 
  /* ================= CAPITAL ALLOCATION (ONE STRATEGY AT A TIME) ================= */
 
@@ -1526,12 +1577,9 @@ const toNum = (v: unknown) => {
 const lastGoodBalanceRef = useRef<number>(0)
 
 useEffect(() => {
-  const v =
-    toNum(equityBuffer?.[equityBuffer.length - 1] ?? undefined) ||
-    toNum(metrics?.balance ?? undefined)
-
+  const v = toNum(availableUsd)
   if (v > 0) lastGoodBalanceRef.current = v
-}, [equityBuffer, metrics?.balance])
+}, [availableUsd])
 
 
 /* ===== OPEN ALLOCATION ===== */
@@ -1552,25 +1600,13 @@ function requestAllocation(ctx: NonNullable<typeof allocContext>) {
   setAllocContext(ctx)
   setAllocOpen(true)
 }
-
 function confirmAllocation(amount: number) {
   const safeAvailable = Number.isFinite(availableUsd) ? availableUsd : 0
-
   if (safeAvailable <= 0) {
     showToast("No funds available", "Your available balance is $0.00")
     setAllocOpen(false)
     return
   }
-
-  const amt = Number(amount)
-  const safeAmount = clamp(Number.isFinite(amt) ? amt : 0, 0, safeAvailable)
-
-  setStarting(true)
-  showToast("Starting…", "Configuring strategy")
-  x9("Starting now. Locking capital + arming execution.", 1)
-
-  // ✅ ASIGNA CAPITAL AL ENGINE
-  setAllocatedUsd(safeAmount)
 
   if (!allocContext) {
     setAllocOpen(false)
@@ -1578,29 +1614,52 @@ function confirmAllocation(amount: number) {
     return
   }
 
-  if (allocContext.mode === "PRESET") {
-    const presetId = allocContext.presetId
-    setAllocOpen(false)
-    setAllocContext(null)
+  const amt = Number(amount)
+  const safeAmount = clamp(Number.isFinite(amt) ? amt : 0, 0, safeAvailable)
 
-    setTimeout(() => {
-      applyStartupPreset(presetId, safeAmount)
-    }, 50)
+  // ✅ capture context once, then clear
+  const ctx = allocContext
+  setAllocContext(null)
 
-    return
+  // ✅ close modal
+  setAllocOpen(false)
+
+  // ✅ allocate to engine (ONE TIME)
+  setAllocatedUsd(safeAmount)
+
+  // ✅ apply strategy/preset FIRST (so it doesn't get blocked by run.active)
+  if (ctx.mode === "PRESET") {
+    // no timeout needed, but keeping a tiny delay avoids racey UI logs
+    setTimeout(() => applyStartupPreset(ctx.presetId, safeAmount), 0)
+  } else {
+    setTimeout(() => applyStrategy(), 0)
   }
 
-  if (allocContext.mode === "ADVANCED_APPLY") {
-    setAllocOpen(false)
-    setAllocContext(null)
+  // ✅ start run AFTER applying strategy/preset
+  setRun({
+    active: true,
+    presetId: ctx.mode === "PRESET" ? ctx.presetId : null,
+    durationSec:
+      ctx.mode === "PRESET"
+        ? (ctx.presetId === "SAFE_COPY"
+            ? 24 * 60 * 60
+            : ctx.presetId === "BALANCED_COPY"
+              ? 3 * 24 * 60 * 60
+              : 7 * 24 * 60 * 60)
+        : 3 * 24 * 60 * 60,
+    startedAtMs: Date.now(),
+    startPnl: 0,
 
-    setTimeout(() => {
-      applyStrategy()
-    }, 50)
+    // 🔥 snapshot REAL (no allocated)
+    startBalance: toNum(realBalanceUsd),
+  })
 
-    return
-  }
+  // ✅ UI feedback
+  setStarting(false)
+  showToast("RUN LIVE", `Allocated ${fmtUsd(safeAmount)}`)
+  x9(`Run started · allocated ${fmtUsd(safeAmount)} · engine armed`, 1)
 }
+
 
   /* ===== UPTIME + SOFT PROGRESS ===== */
   useEffect(() => {
@@ -1847,7 +1906,7 @@ setTimeout(() => {
 
   /* ===== DERIVED UI VALUES ===== */
   const equityDisplay = equityBuffer
-  const initialDisplay = baselineUsd ?? (metrics?.balance ?? 0) + bullionsBalanceUsd
+  const initialDisplay = realBalanceUsd
 
   const assignedCount = useMemo(
     () => Object.values(assignedRoles as any).filter(Boolean).length,
@@ -1855,61 +1914,71 @@ setTimeout(() => {
   )
   const hasAtLeastOneRole = assignedCount > 0
   const canApply = hasAtLeastOneRole && !run.active && !starting && !isBlocked
+/* ===== GUARD (ONLY ONCE) ===== */
+const waiting =
+  !hydrated ? "hydration" :
+  !market ? "market" :
+  !metrics ? "metrics" :
+  null
 
-  /* ===== GUARD (ONLY ONCE, AFTER ALL HOOKS) ===== */
-  if (!engine || !metrics) {
-    return (
-      <main className={`min-h-screen bg-black font-mono ${theme.text}`}>
-        <AddictiveNeonStyles />
-        <BullionsHeader tier={account.tier} status="idle" connectedTraders={0} openTrades={0} />
-      </main>
-    )
-  }
 
+  if (waiting) {
   return (
     <main className={`min-h-screen bg-black font-mono ${theme.text}`}>
       <AddictiveNeonStyles />
+      <BullionsHeader tier={walletAccount.tier} status="idle" connectedTraders={0} openTrades={0} />
+      <div className="p-6 text-xs text-white/60">
+        loading: <span className="text-white/90 font-semibold">{waiting}</span>
+      </div>
+    </main>
+  )
+}
 
-      <BullionsHeader
-        tier={account.tier}
-        status={status}
-        connectedTraders={connectedTraderObjects.length}
-        openTrades={openTrades.length}
-      />
+return (
+  <main className={`min-h-screen bg-black font-mono ${theme.text}`}>
+    <AddictiveNeonStyles />
 
-      <Toast toast={toast} />
+    <BullionsHeader
+      tier={walletAccount.tier}
+      status={status}
+      connectedTraders={connectedTraderObjects.length}
+      openTrades={openTrades.length}
+    />
 
-      <div className="p-6 space-y-6 pb-28">
-        {/* ================= MAIN PANEL (SIMPLE) ================= */}
-        <section
-          className={["rounded-[28px] border p-5 md:p-6 neon-card", theme.border].join(" ")}
-          style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 70px ${theme.glow}` }}
-        >
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-            {/* LEFT */}
-            <div className="lg:col-span-5 space-y-4">
-              <LogoPlate tier={account.tier} version={VERSION} />
+    <Toast toast={toast} />
 
-<div className={fx === "QUICKCOPY" ? "burst-quickcopy rounded-[28px]" : ""}>
-  <QuickCopyTopStrategies
-    borderClass={theme.border}
-    glow={theme.glow}
-    enabled={!allocOpen && !starting}
-    hint="No traders available — connect or create one to execute"
-    onPick={(presetId) => {
-      unlockAudioOnce()
-      setFx("QUICKCOPY")
+    <div className="p-6 space-y-6 pb-28">
+      {/* ================= MAIN PANEL (SIMPLE) ================= */}
+      <section
+        className={["rounded-[28px] border p-5 md:p-6 neon-card", theme.border].join(" ")}
+        style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 70px ${theme.glow}` }}
+      >
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+          {/* LEFT */}
+          <div className="lg:col-span-5 space-y-4">
+            <LogoPlate tier={walletAccount.tier} version={VERSION} />
 
-      const ttsMs =
-        specialFirstSeenMsRef.current > 0 ? Math.max(0, Date.now() - specialFirstSeenMsRef.current) : undefined
+            <div className={fx === "QUICKCOPY" ? "burst-quickcopy rounded-[28px]" : ""}>
+              <QuickCopyTopStrategies
+                borderClass={theme.border}
+                glow={theme.glow}
+                enabled={!allocOpen && !starting}
+                hint="No traders available — connect or create one to execute"
+                onPick={(presetId) => {
+                  unlockAudioOnce()
+                  setFx("QUICKCOPY")
 
-      logQuick({
-        type: "PRESET_CLICKED",
-        ts: Date.now(),
-        presetId,
-        specialHot,
-        ttsMs,
-      })
+                  const ttsMs =
+                    specialFirstSeenMsRef.current > 0
+                      ? Math.max(0, Date.now() - specialFirstSeenMsRef.current)
+                      : undefined
+
+                  logQuick({
+                    type: "PRESET_CLICKED",
+                    ts: Date.now(),
+                    presetId,
+                    specialHot,
+                  })
 
       x9(`Strategy selected → ${presetId.replaceAll("_", " ")}. Choose allocation.`, 0)
       showToast("Strategy selected", "Choose how much capital to allocate")
@@ -1963,7 +2032,7 @@ onSpecialCta={() => {
 </div>
 
               <ProStrategyFeed
-                tier={account.tier}
+                tier={walletAccount.tier}
                 borderClass={theme.border}
                 glow={theme.glow}
                 onUpgrade={() => router.push(`/onboarding?target=pro`)}
@@ -1982,12 +2051,19 @@ onSpecialCta={() => {
             <div className="lg:col-span-7 space-y-4">
               <div className={fx === "EQUITY" ? "burst-equity rounded-[28px] overflow-hidden" : ""}>
               
-  <EquityCard
-  equity={equityDisplay}
-  initialBalance={initialDisplay}
+     {disableRiskBrake && (
+  <div className="mb-2 rounded-md bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
+    ⚠️ OVERRIDE ON — Protections Desabled
+  </div>
+)}
+
+
+<EquityCard
+  equity={engine.equity}
+  initialBalance={baselineUsd ?? realBalanceUsd}  // ✅ nunca allocated
   lineColor={theme.line}
   border={theme.border}
-  pnl={metrics.pnl}
+  pnl={enginePnl}
   health={healthStatus}
   warningDD={planBTrigger + 2}
   criticalDD={planBTrigger}
@@ -1997,12 +2073,13 @@ onSpecialCta={() => {
   balanceTone={balanceTone}
   balanceDeltaUsd={deltaFromBase}
   onRequestDisableProtections={() => {
-  console.log("OVERRIDE CLICK ✅")
-  setDisableRiskBrake(true)
-  engine.actions.setPaused(false) // opcional
-}}
-
+    setDisableRiskBrake(v => !v)
+    engine.actions.setPaused(false)
+  }}
 />
+
+
+
 
               </div>
               {/* 6xs ubicacion */}
@@ -2128,7 +2205,9 @@ onSpecialCta={() => {
                   <span className="text-white/80 tabular-nums">{drawdown}%</span> · {policy.reasons.join(" • ")}
                 </div>
 
-                <LiveTradesMT5 trades={trades} market={market} />
+
+<LiveTradesMT5 trades={trades} market={market} />
+
               </section>
 
               {/* ADVANCED TOGGLE */}
@@ -2226,7 +2305,7 @@ onSpecialCta={() => {
   </div>
 
               <TraderTree
-                tier={account.tier}
+                tier={walletAccount.tier}
                 traders={traders}
                 assignedRoles={assignedRoles}
                 activeRole={null}
@@ -2316,7 +2395,7 @@ onSpecialCta={() => {
 
             <section>
               <TraderGrid
-                tier={account.tier}
+                tier={walletAccount.tier}
                 traders={traders}
                 assignedRoles={assignedRoles}
                 activeRole={null}

@@ -1,48 +1,46 @@
 "use client"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
-export function useMarketPrices() {
-  const [market, setMarket] = useState<any>(null)
-  const fetchingRef = useRef(false)
+type Market = { btc: number; eth: number; sol: number }
+
+function toPos(n: any) {
+  const x = Number(n)
+  return Number.isFinite(x) && x > 0 ? x : null
+}
+
+export default function useMarketPrices(): Market | null {
+  const [m, setM] = useState<Market | null>(null)
 
   useEffect(() => {
-    let alive = true
+    let dead = false
 
     const tick = async () => {
-      if (fetchingRef.current) return
-      fetchingRef.current = true
-
       try {
-        const r = await fetch("/api/price", { cache: "no-store" })
-
-        if (!r.ok) {
-          console.log("[MARKET] /api/price failed", r.status)
-          return
-        }
-
+        const r = await fetch("/api/market", { cache: "no-store" })
         const j = await r.json()
-        if (!alive || !j?.ok) return
 
-        setMarket({
-          btc: { usd: j.btc },
-          eth: { usd: j.eth },
-          sol: { usd: j.sol },
-        })
-      } catch (e) {
-        console.log("[MARKET] exception", e)
-      } finally {
-        fetchingRef.current = false
+        const btc = toPos(j?.btc)
+        const eth = toPos(j?.eth)
+        const sol = toPos(j?.sol)
+        if (!btc || !eth || !sol) return
+
+        ;(window as any).__btc = btc
+        ;(window as any).__eth = eth
+        ;(window as any).__sol = sol
+
+        if (!dead) setM({ btc, eth, sol })
+      } catch {
+        // ignore
       }
     }
 
     tick()
-    const t = setInterval(tick, 15_000) // ⬅️ NO 5s, 15s
-
+    const t = setInterval(tick, 1200)
     return () => {
-      alive = false
+      dead = true
       clearInterval(t)
     }
   }, [])
 
-  return market
+  return m
 }

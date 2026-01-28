@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 
-type Tier = "BULLION" | "HELLION" | "TORION"
+export type Tier = "BULLION" | "HELLION" | "TORION"
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const a = ((angleDeg - 90) * Math.PI) / 180
@@ -19,12 +19,11 @@ function arcPath(cx: number, cy: number, r: number, startAngle: number, endAngle
 
 const TIER_ARC: Record<Tier, { a0: number; a1: number; label: string; glow: string }> = {
   BULLION: { a0: 210, a1: 300, label: "Conservative", glow: "rgba(34,197,94,0.22)" },
-  HELLION: { a0: 300, a1: 30, label: "Dynamic", glow: "rgba(239,68,68,0.20)" }, // wraps
+  HELLION: { a0: 300, a1: 30, label: "Dynamic", glow: "rgba(239,68,68,0.20)" },
   TORION: { a0: 30, a1: 120, label: "Institutional", glow: "rgba(168,85,247,0.22)" },
 }
 
 function normAngles(a0: number, a1: number) {
-  // allow wrap segments by converting to monotonic end
   if (a1 < a0) return { start: a0, end: a1 + 360 }
   return { start: a0, end: a1 }
 }
@@ -39,7 +38,7 @@ export function OnboardDial({
   const [spark, setSpark] = useState(0)
 
   useEffect(() => {
-    const t = setInterval(() => setSpark(s => (s + 1) % 9999), 1400)
+    const t = setInterval(() => setSpark((s) => (s + 1) % 9999), 1400)
     return () => clearInterval(t)
   }, [])
 
@@ -49,11 +48,9 @@ export function OnboardDial({
   }, [tier])
 
   const spin = status === "live" ? 18 : status === "arming" ? 8 : 0
-
   const label = TIER_ARC[tier].label
   const glow = TIER_ARC[tier].glow
 
-  // dial geometry
   const cx = 160
   const cy = 160
   const rOuter = 132
@@ -63,11 +60,7 @@ export function OnboardDial({
   const seg2 = arcPath(cx, cy, rInner, arc.start, arc.end)
 
   return (
-    <div
-      className="relative mx-auto w-[320px] h-[260px]"
-      style={{ filter: "drop-shadow(0 18px 60px rgba(0,0,0,0.55))" }}
-    >
-      {/* soft radial haze */}
+    <div className="relative mx-auto h-[260px] w-[320px]">
       <div
         className="absolute inset-0 rounded-[32px]"
         style={{
@@ -82,18 +75,7 @@ export function OnboardDial({
         animate={{ rotate: spin }}
         transition={{ type: "spring", stiffness: 40, damping: 18 }}
       >
-        <svg width="320" height="320" viewBox="0 0 320 320" className="block">
-          <defs>
-            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3.5" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
-          {/* base ring */}
+        <svg width="320" height="320" viewBox="0 0 320 320">
           <path
             d={arcPath(cx, cy, rOuter, 200, 520)}
             fill="none"
@@ -102,7 +84,6 @@ export function OnboardDial({
             strokeLinecap="round"
           />
 
-          {/* active segment outer */}
           <motion.path
             key={`outer-${tier}-${spark}`}
             d={seg1}
@@ -110,13 +91,11 @@ export function OnboardDial({
             stroke="rgba(255,255,255,0.32)"
             strokeWidth="16"
             strokeLinecap="round"
-            filter="url(#glow)"
-            initial={{ pathLength: 0, opacity: 0.2 }}
-            animate={{ pathLength: 1, opacity: 1 }}
-            transition={{ duration: 0.55, ease: "easeOut" }}
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.6 }}
           />
 
-          {/* active segment inner (secondary) */}
           <motion.path
             key={`inner-${tier}-${spark}`}
             d={seg2}
@@ -124,43 +103,35 @@ export function OnboardDial({
             stroke="rgba(255,255,255,0.18)"
             strokeWidth="10"
             strokeLinecap="round"
-            initial={{ pathLength: 0, opacity: 0.15 }}
-            animate={{ pathLength: 1, opacity: 0.9 }}
-            transition={{ duration: 0.65, ease: "easeOut", delay: 0.05 }}
-          />
-
-          {/* tiny “cursor” dot */}
-          <motion.circle
-            r="5"
-            fill="rgba(255,255,255,0.85)"
-            cx={polarToCartesian(cx, cy, rOuter, arc.end).x}
-            cy={polarToCartesian(cx, cy, rOuter, arc.end).y}
-            animate={{ scale: status === "live" ? [1, 1.25, 1] : 1, opacity: status === "idle" ? 0.6 : 1 }}
-            transition={{ duration: 1.2, repeat: status === "live" ? Infinity : 0 }}
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.6, delay: 0.05 }}
           />
         </svg>
       </motion.div>
 
-      {/* center label */}
       <div className="absolute left-1/2 top-[56%] -translate-x-1/2 -translate-y-1/2 text-center">
-        <div className="text-[10px] tracking-widest text-white/40">TAILORED RISK MANAGEMENT</div>
+        <div className="text-[10px] tracking-widest text-white/40">
+          TAILORED RISK MANAGEMENT
+        </div>
 
         <AnimatePresence mode="wait">
           <motion.div
             key={label}
-            initial={{ opacity: 0, y: 6, filter: "blur(6px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: -6, filter: "blur(6px)" }}
-            transition={{ duration: 0.25 }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
             className="mt-2 inline-flex items-center rounded-xl border border-white/10 bg-black/45 px-4 py-2"
             style={{ boxShadow: `0 0 34px ${glow}` }}
           >
-            <span className="text-[12px] font-semibold tracking-widest text-white/85">{label}</span>
+            <span className="text-[12px] font-semibold tracking-widest text-white/85">
+              {label}
+            </span>
           </motion.div>
         </AnimatePresence>
 
         <div className="mt-2 text-[10px] tracking-widest text-white/35">
-          status: <span className="text-white/70 font-semibold">{status.toUpperCase()}</span>
+          status: <span className="text-white/70">{status.toUpperCase()}</span>
         </div>
       </div>
     </div>

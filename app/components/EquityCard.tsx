@@ -82,6 +82,15 @@ export default function EquityCard({
   const lastEquity = seriesUsd[seriesUsd.length - 1] ?? initialBalance
   const firstEquity = seriesUsd[0] ?? initialBalance
 
+  // ✅ WALLET REAL (NO cambia cuando allocas %)
+const walletBalance =
+  Number.isFinite(initialBalance) ? Number(initialBalance) : 0
+
+// ✅ ENGINE EQUITY (capital de la estrategia)
+const engineEquity =
+  Number.isFinite(lastEquity) ? Number(lastEquity) : walletBalance
+
+
   // ✅ separar DD NOW (último punto vs peak) y DD WORST (peor histórico)
   const { ddWorstPct, ddNowPct, peakEquity } = useMemo(() => {
     if (seriesUsd.length < 2) return { ddWorstPct: 0, ddNowPct: 0, peakEquity: seriesUsd[0] ?? 0 }
@@ -174,7 +183,7 @@ export default function EquityCard({
               <div className="text-[10px] tracking-widest text-white/40">BALANCE</div>
 
               <div className={`mt-1 text-[44px] leading-none font-semibold tabular-nums ${balanceTone}`}>
-                {fmtUsd(lastEquity)}
+                {fmtUsd(engineEquity)}
               </div>
 
               {typeof balanceDeltaUsd === "number" && (
@@ -257,19 +266,24 @@ export default function EquityCard({
                   </div>
                 )}
 
-                {/* ✅ OVERRIDE CTA si existe el callback */}
-                {onRequestDisableProtections ? (
-                  <button
-                    onClick={onRequestDisableProtections}
-                    className="w-full rounded-2xl border border-rose-300/25 bg-rose-300/10 px-4 py-3 text-left transition hover:bg-rose-300/15"
-                  >
-                    <div className="text-[10px] tracking-widest text-rose-100/80">OVERRIDE</div>
-                    <div className="mt-1 text-[12px] text-white/85 font-semibold">Disable protections now</div>
-                    <div className="mt-1 text-[10px] text-white/55">Manual control · higher risk</div>
-                  </button>
-                ) : (
-                  <div className="text-[10px] text-white/40">You can disable protections in Advanced mode.</div>
-                )}
+       {/* ✅ OVERRIDE CTA si existe el callback */}
+{onRequestDisableProtections ? (
+  <button
+    type="button"
+    onClick={() => {
+      console.log("[EquityCard] OVERRIDE CLICK ✅")
+      onRequestDisableProtections()
+    }}
+    className="mt-3 w-full rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-left transition hover:bg-rose-500/15 active:scale-[0.99]"
+  >
+    <div className="text-[12px] font-semibold tracking-widest text-rose-200">OVERRIDE</div>
+    <div className="mt-1 text-sm font-semibold text-white/90">Disable protections now</div>
+    <div className="mt-1 text-xs text-white/60">Manual control · higher risk</div>
+  </button>
+) : (
+  <div className="mt-3 text-xs text-white/50">You can disable protections in Advanced mode.</div>
+)}
+
               </div>
             </div>
           </div>

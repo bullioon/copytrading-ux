@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
+import Providers from "./providers"
+import "@solana/wallet-adapter-react-ui/styles.css"
 
 export const metadata: Metadata = {
   title: "Bullions",
@@ -10,9 +12,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-black text-white antialiased">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   )
 }
-

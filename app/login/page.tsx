@@ -1,10 +1,10 @@
 import { Suspense } from "react"
-import DashboardClient from "./DashboardClient"
+import LoginClient from "./LoginClient"
 
 export default function Page() {
   return (
     <Suspense fallback={null}>
-      <DashboardClient />
+      <LoginClient />
     </Suspense>
   )
 }
