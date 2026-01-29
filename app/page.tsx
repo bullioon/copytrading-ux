@@ -1,10 +1,6 @@
-import { Suspense } from "react"
-import HomeClient from "./HomeClient"
+// app/page.tsx
+import { redirect } from "next/navigation"
 
 export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <HomeClient />
-    </Suspense>
-  )
+  redirect("/onboarding")
 }
