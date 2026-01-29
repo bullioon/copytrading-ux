@@ -22,7 +22,8 @@ export default function LoginClient() {
   const router = useRouter()
   const params = useSearchParams()
 
-  const next = params.get("next") || "/enter"
+  // ✅ NO uses /enter como default (eso te brinca cosas)
+  const next = params.get("next") || "/onboarding"
 
   const inferredTier = useMemo(() => {
     try {
@@ -50,7 +51,11 @@ export default function LoginClient() {
 
       const address = publicKey.toBase58()
 
-      const nonceRes = await fetch(`/api/auth/nonce?address=${address}`, { credentials: "include" })
+      // 1) nonce
+      const nonceRes = await fetch(`/api/auth/nonce?address=${address}`, {
+        credentials: "include",
+        cache: "no-store",
+      })
       const nonceText = await nonceRes.text()
       let nonceJson: any = {}
       try {
@@ -62,13 +67,16 @@ export default function LoginClient() {
 
       const message: string = nonceJson.message
 
+      // 2) sign
       const sigBytes = await signMessage(new TextEncoder().encode(message))
       const bs58 = (await import("bs58")).default
       const signature = bs58.encode(sigBytes)
 
+      // 3) verify
       const verifyRes = await fetch("/api/auth/verify", {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address, signature, message }),
       })
@@ -82,7 +90,38 @@ export default function LoginClient() {
       }
       if (!verifyRes.ok) throw new Error(verifyJson.error || "Auth failed")
 
-      router.push(next)
+      // ✅ 4) decide la ruta REAL (pay vs dashboard) por access/me
+      const meRes = await fetch("/api/access/me", {
+        credentials: "include",
+        cache: "no-store",
+      })
+
+      const meText = await meRes.text()
+      let meJson: any = {}
+      try {
+        meJson = JSON.parse(meText)
+      } catch {
+        meJson = { error: meText || "Empty response" }
+      }
+
+      if (!meRes.ok || !meJson?.ok) {
+        router.replace("/onboarding")
+        return
+      }
+
+      // Si tu backend trae "funded"
+      if (meJson.funded) {
+        router.replace("/dashboard")
+        return
+      }
+
+      // No funded => pay (y conserva tier si venía en next)
+      const tierParam =
+        inferredTier === "BULLION" || inferredTier === "HELLION" || inferredTier === "TORION"
+          ? `?tier=${inferredTier}`
+          : ""
+
+      router.replace(`/pay${tierParam}`)
     } catch (e: any) {
       setErr(e?.message || "Error")
     } finally {
@@ -151,7 +190,7 @@ export default function LoginClient() {
               <div>▸ Nonce issued</div>
               <div>▸ Signature requested (no gas)</div>
               <div>▸ Session cookie will be set</div>
-              <div>▸ You continue to: {next}</div>
+              <div>▸ Routing decided by /api/access/me</div>
             </div>
 
             {err && (
