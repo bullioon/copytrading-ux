@@ -19,10 +19,15 @@ export default function useMarketPrices(): Market | null {
         const r = await fetch("/api/market", { cache: "no-store" })
         const j = await r.json()
 
+        // ✅ si el endpoint ya te da ok:true, respétalo
+        if (!j?.ok) return
+
         const btc = toPos(j?.btc)
         const eth = toPos(j?.eth)
         const sol = toPos(j?.sol)
-        if (!btc || !eth || !sol) return
+
+        // ✅ compara contra null, no con falsy
+        if (btc == null || eth == null || sol == null) return
 
         ;(window as any).__btc = btc
         ;(window as any).__eth = eth
