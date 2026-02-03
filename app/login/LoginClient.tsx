@@ -15,6 +15,20 @@ function shortAddr(a?: string | null) {
   return a.slice(0, 4) + "…" + a.slice(-4)
 }
 
+function normalizeTier(t?: string | null) {
+  const x = (t || "").toUpperCase()
+  return x === "BULLION" || x === "HELLION" || x === "TORION" ? x : ""
+}
+
+async function safeJson(r: Response) {
+  const text = await r.text().catch(() => "")
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: text || "Empty response" }
+  }
+}
+
 export default function LoginClient() {
   const { publicKey, signMessage } = useWallet()
   const [loading, setLoading] = useState(false)
@@ -22,24 +36,15 @@ export default function LoginClient() {
   const router = useRouter()
   const params = useSearchParams()
 
-  // ✅ NO uses /enter como default (eso te brinca cosas)
-  const next = params.get("next") || "/onboarding"
-
-  const inferredTier = useMemo(() => {
-    try {
-      const u = new URL("http://x" + next)
-      return (u.searchParams.get("tier") || "").toUpperCase()
-    } catch {
-      return ""
-    }
-  }, [next])
+  // tier del query (onboarding -> /login?tier=BULLION)
+  const tier = useMemo(() => normalizeTier(params.get("tier")), [params])
 
   const tierGlow = useMemo(() => {
-    if (inferredTier === "BULLION") return "0 0 90px rgba(34,197,94,0.22)"
-    if (inferredTier === "HELLION") return "0 0 90px rgba(239,68,68,0.22)"
-    if (inferredTier === "TORION") return "0 0 90px rgba(168,85,247,0.22)"
+    if (tier === "BULLION") return "0 0 90px rgba(34,197,94,0.22)"
+    if (tier === "HELLION") return "0 0 90px rgba(239,68,68,0.22)"
+    if (tier === "TORION") return "0 0 90px rgba(168,85,247,0.22)"
     return "0 0 90px rgba(168,85,247,0.16)"
-  }, [inferredTier])
+  }, [tier])
 
   async function handleSignIn() {
     try {
@@ -56,15 +61,8 @@ export default function LoginClient() {
         credentials: "include",
         cache: "no-store",
       })
-      const nonceText = await nonceRes.text()
-      let nonceJson: any = {}
-      try {
-        nonceJson = JSON.parse(nonceText)
-      } catch {
-        nonceJson = { error: nonceText || "Empty response" }
-      }
-      if (!nonceRes.ok) throw new Error(nonceJson.error || "Nonce failed")
-
+      const nonceJson = await safeJson(nonceRes)
+      if (!nonceRes.ok) throw new Error(nonceJson?.error || "Nonce failed")
       const message: string = nonceJson.message
 
       // 2) sign
@@ -80,48 +78,28 @@ export default function LoginClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address, signature, message }),
       })
+      const verifyJson = await safeJson(verifyRes)
+      if (!verifyRes.ok) throw new Error(verifyJson?.error || "Auth failed")
 
-      const verifyText = await verifyRes.text()
-      let verifyJson: any = {}
+      // ✅ 4) tier final (fallback BULLION)
+      const t = normalizeTier(tier) || "BULLION"
+
+      // ✅ 5) set-tier best-effort (POST). NO dependemos de cookie para navegar.
       try {
-        verifyJson = JSON.parse(verifyText)
+        await fetch("/api/access/set-tier", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tier: t }),
+        })
       } catch {
-        verifyJson = { error: verifyText || "Empty response" }
-      }
-      if (!verifyRes.ok) throw new Error(verifyJson.error || "Auth failed")
-
-      // ✅ 4) decide la ruta REAL (pay vs dashboard) por access/me
-      const meRes = await fetch("/api/access/me", {
-        credentials: "include",
-        cache: "no-store",
-      })
-
-      const meText = await meRes.text()
-      let meJson: any = {}
-      try {
-        meJson = JSON.parse(meText)
-      } catch {
-        meJson = { error: meText || "Empty response" }
+        // ignore
       }
 
-      if (!meRes.ok || !meJson?.ok) {
-        router.replace("/onboarding")
-        return
-      }
-
-      // Si tu backend trae "funded"
-      if (meJson.funded) {
-        router.replace("/dashboard")
-        return
-      }
-
-      // No funded => pay (y conserva tier si venía en next)
-      const tierParam =
-        inferredTier === "BULLION" || inferredTier === "HELLION" || inferredTier === "TORION"
-          ? `?tier=${inferredTier}`
-          : ""
-
-      router.replace(`/pay${tierParam}`)
+      // ✅ 6) SIEMPRE /enter con tier por query (NO depende de cookies)
+      router.replace(`/enter?tier=${encodeURIComponent(t)}`)
+      return
     } catch (e: any) {
       setErr(e?.message || "Error")
     } finally {
@@ -143,7 +121,7 @@ export default function LoginClient() {
             STATUS · <span className="text-emerald-400 font-semibold">ARMING</span>
           </div>
           <div className="text-white/50">
-            NEXT · <span className="text-white/80 font-semibold">{next}</span>
+            NEXT · <span className="text-white/80 font-semibold">/enter</span>
           </div>
         </div>
 
@@ -158,9 +136,9 @@ export default function LoginClient() {
               Connect Phantom, then sign a message to verify you own the wallet.
             </p>
 
-            {inferredTier ? (
+            {tier ? (
               <div className="mt-2 inline-flex items-center rounded-full border border-white/10 bg-black/50 px-4 py-2 text-[10px] tracking-widest text-white/70">
-                TIER LOCK · <span className="ml-2 text-white/90 font-semibold">{inferredTier}</span>
+                TIER SELECTED · <span className="ml-2 text-white/90 font-semibold">{tier}</span>
               </div>
             ) : null}
           </div>
@@ -186,22 +164,11 @@ export default function LoginClient() {
               {loading ? "SIGNING…" : "SIGN-IN · VERIFY"}
             </button>
 
-            <div className="mt-2 space-y-2 font-mono text-xs text-emerald-300">
-              <div>▸ Nonce issued</div>
-              <div>▸ Signature requested (no gas)</div>
-              <div>▸ Session cookie will be set</div>
-              <div>▸ Routing decided by /api/access/me</div>
-            </div>
-
             {err && (
               <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
                 {err}
               </div>
             )}
-
-            <div className="mt-4 text-center text-[10px] tracking-widest text-white/45">
-              Access is allocated in waves · Leaving may release your slot
-            </div>
           </div>
         </div>
       </div>

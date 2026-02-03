@@ -18,7 +18,11 @@ async function fetchOne(symbol: string) {
     },
   })
 
-  if (!r.ok) throw new Error(`binance_${r.status}`)
+  if (!r.ok) {
+    const text = await r.text().catch(() => "")
+    throw new Error(`binance_${r.status}:${text.slice(0, 120)}`)
+  }
+
   const j = await r.json()
   const n = Number(j?.markPrice)
   if (!Number.isFinite(n) || n <= 0) throw new Error("bad_mark_price")
@@ -26,6 +30,7 @@ async function fetchOne(symbol: string) {
 }
 
 export async function GET() {
+  // cache fresco
   if (cache && Date.now() - cache.ts < TTL_MS) {
     return NextResponse.json({ ok: true, source: "cache", ...cache.data, ts: cache.ts })
   }
@@ -39,8 +44,10 @@ export async function GET() {
 
     const data: Prices = { btc, eth, sol }
     cache = { ts: Date.now(), data }
+
     return NextResponse.json({ ok: true, source: "binance", ...data, ts: cache.ts })
   } catch (e: any) {
+    // si falla pero hay cache viejo
     if (cache) {
       return NextResponse.json({
         ok: true,
@@ -52,10 +59,12 @@ export async function GET() {
       })
     }
 
+    // fallback: NO regreses ok:false, para que el UI no truene
     return NextResponse.json({
       ok: true,
       source: "fallback",
       warning: "binance_failed_no_cache",
+      // ojo: aquí ya NO congelamos porque el hook ya tiene DEFAULT
       btc: 0,
       eth: 0,
       sol: 0,

@@ -4,6 +4,8 @@ import { useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import DashboardView from "@/app/components/DashboardView"
 
+/* ================= TYPES ================= */
+
 export type Tier = "BULLION" | "HELLION" | "TORION"
 
 export type Account = {
@@ -12,6 +14,8 @@ export type Account = {
   balance: number
   funded: boolean
 }
+
+/* ================= ACCOUNT FACTORY ================= */
 
 function getAccountByMode(mode: string): Account {
   if (mode === "hellion") {
@@ -22,6 +26,8 @@ function getAccountByMode(mode: string): Account {
   }
   return { tier: "BULLION", baseBalance: 300, balance: 300, funded: false }
 }
+
+/* ================= ENTRY ================= */
 
 export default function HomeClient() {
   const params = useSearchParams()

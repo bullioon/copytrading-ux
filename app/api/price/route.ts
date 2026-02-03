@@ -1,57 +1,72 @@
 import { NextResponse } from "next/server"
 
 export const runtime = "nodejs"
-export const revalidate = 0
+export const dynamic = "force-dynamic"
 
-type Cache = { ts: number; payload: any }
+type Cache = { ts: number; data: any }
+let cache: Cache | null = null
 
-// ✅ cache global en memoria (vive mientras el server dev esté vivo)
-const g = globalThis as any
-if (!g.__PRICE_CACHE) g.__PRICE_CACHE = { ts: 0, payload: null } as Cache
+const TTL_MS = 60_000 // 60s cache
+
+async function fetchCoingecko() {
+  const url =
+    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd"
+
+  const r = await fetch(url, {
+    headers: {
+      accept: "application/json",
+      // ayuda a que no te tiren tan fácil
+      "user-agent": "copytrading-ux/1.0",
+    },
+    // Next cache a nivel server (no siempre basta, pero ayuda)
+    next: { revalidate: 60 },
+  })
+
+  if (!r.ok) {
+    const text = await r.text().catch(() => "")
+    return { ok: false as const, status: r.status, text }
+  }
+
+  const json = await r.json()
+  return { ok: true as const, json }
+}
 
 export async function GET() {
-  const now = Date.now()
-  const cache: Cache = g.__PRICE_CACHE
-
-  // ✅ si tenemos cache reciente (<30s), lo servimos SIN pegarle a CoinGecko
-  if (cache.payload && now - cache.ts < 30_000) {
-    return NextResponse.json(cache.payload)
+  // 1) si hay cache fresco, úsalo
+  if (cache && Date.now() - cache.ts < TTL_MS) {
+    return NextResponse.json({ ok: true, source: "cache", ...cache.data })
   }
 
-  try {
-    const url =
-      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd"
+  // 2) intenta coingecko
+  const cg = await fetchCoingecko()
 
-    const r = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        Accept: "application/json",
-      },
-    })
-
-    if (!r.ok) {
-      // ✅ si CoinGecko falla, NO mates todo: regresa cache viejo si existe
-      if (cache.payload) return NextResponse.json(cache.payload)
-      return NextResponse.json({ ok: false, error: "coingecko_failed", status: r.status }, { status: 502 })
+  if (cg.ok) {
+    const data = {
+      btc: cg.json.bitcoin?.usd ?? 0,
+      eth: cg.json.ethereum?.usd ?? 0,
+      sol: cg.json.solana?.usd ?? 0,
     }
+    cache = { ts: Date.now(), data }
+    return NextResponse.json({ ok: true, source: "coingecko", ...data })
+  }
 
-    const raw = await r.json()
-
-    const payload = {
+  // 3) si coingecko falla (429), devuelve último cache si existe
+  if (cache) {
+    return NextResponse.json({
       ok: true,
-      btc: raw?.bitcoin?.usd,
-      eth: raw?.ethereum?.usd,
-      sol: raw?.solana?.usd,
-      raw,
-    }
-
-    // ✅ guarda cache bueno
-    g.__PRICE_CACHE = { ts: now, payload }
-
-    return NextResponse.json(payload)
-  } catch (e) {
-    // ✅ si truena fetch, igual regresa cache viejo si existe
-    if (cache.payload) return NextResponse.json(cache.payload)
-    return NextResponse.json({ ok: false, error: "prices_exception" }, { status: 502 })
+      source: "stale-cache",
+      warning: "coingecko_rate_limited",
+      ...cache.data,
+    })
   }
+
+  // 4) si no hay cache, devuelve fallback (para NO congelar UI)
+  return NextResponse.json({
+    ok: true,
+    source: "fallback",
+    warning: `coingecko_failed_${cg.status}`,
+    btc: 0,
+    eth: 0,
+    sol: 0,
+  })
 }

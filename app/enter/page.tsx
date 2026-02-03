@@ -1,43 +1,61 @@
+// app/enter/page.tsx
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { readSession } from "@/lib/session"
-import { db } from "@/lib/firebaseAdmin"
+import { setTier } from "@/lib/accessStore"
 
-export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export default async function EnterPage() {
-  const store = await cookies()
-  const token = store.get("ct_session")?.value
+function normalizeTier(t?: string | null) {
+  const x = (t || "").toUpperCase()
+  return x === "BULLION" || x === "HELLION" || x === "TORION" ? x : ""
+}
 
-  // 1) no sesión -> login
-  if (!token) redirect("/login?next=" + encodeURIComponent("/enter"))
+type SP = { tier?: string }
 
-  // 2) sesión inválida -> login
-  let address = ""
-  try {
-    const payload = await readSession(token)
-    address = payload?.address || ""
-  } catch {
+export default async function Page({ searchParams }: { searchParams: any }) {
+  const c = await cookies()
+
+  // ✅ usa la cookie real de sesión (incluye ct_session)
+  const token =
+    c.get("ct_session")?.value ||
+    c.get("access_token")?.value ||
+    c.get("session")?.value ||
+    c.get("token")?.value ||
+    ""
+
+  if (!token) {
     redirect("/login?next=" + encodeURIComponent("/enter"))
   }
-  if (!address) redirect("/login?next=" + encodeURIComponent("/enter"))
 
-  // 3) lee access
-  const snap = await db.collection("access").doc(address).get()
-  const data = snap.exists ? (snap.data() as any) : null
+  // ✅ Promise-safe (Next 16 puede mandar Promise)
+  const sp = (await Promise.resolve(searchParams)) as SP
 
-  // si no hay doc todavía, regresa a onboarding
-  if (!data?.tier) redirect("/onboarding")
+  const tier = normalizeTier(sp?.tier || "")
+  if (!tier) redirect("/onboarding")
 
-  // si no está activo (no pagó), pay con tier
-  if (!data?.active) redirect(`/pay?tier=${encodeURIComponent(data.tier)}`)
+  // ✅ NO FETCH a /api aquí.
+  // Persistimos tier directo en Firestore (best-effort)
+  try {
+    const payload: any = await readSession(token).catch(() => null)
 
-  // 4) ya pagó: manda al dashboard correspondiente
-  const tier = data.tier as "BULLION" | "HELLION" | "TORION"
+    const address =
+      payload?.address ||
+      payload?.sub ||        // a veces viene aquí
+      payload?.publicKey ||  // por si acaso
+      payload?.wallet ||
+      ""
 
-  // ✅ AJUSTA AQUÍ a tus rutas reales:
-  if (tier === "HELLION") redirect("/dashboard?mode=hellion")
-  if (tier === "TORION") redirect("/dashboard?mode=torion")
-  redirect("/dashboard?mode=bullion")
+    if (address) {
+      await setTier(address, tier as any)
+    } else {
+      // no rompas UX
+      // console.log("⚠️ enter: session but no address in payload")
+    }
+  } catch {
+    // ignore (best-effort)
+  }
+
+  const mode = tier === "HELLION" ? "hellion" : tier === "TORION" ? "torion" : "bullion"
+  redirect(`/dashboard?mode=${mode}`)
 }

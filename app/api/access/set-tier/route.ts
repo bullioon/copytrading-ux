@@ -1,52 +1,74 @@
+// app/api/access/set-tier/route.ts
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { readSession } from "@/lib/session"
-import { db, FieldValue } from "@/lib/firebaseAdmin"
+import { setTier } from "@/lib/accessStore"
 
+export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-function getCookie(req: Request, name: string) {
-  const cookie = req.headers.get("cookie") || ""
-  const part = cookie
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith(name + "="))
-  return part ? decodeURIComponent(part.split("=").slice(1).join("=")) : null
+function normalizeTier(t?: string | null) {
+  const x = (t || "").toUpperCase()
+  return x === "BULLION" || x === "HELLION" || x === "TORION" ? x : ""
 }
 
 export async function POST(req: Request) {
+  console.log("🔥 SET-TIER HIT")
+
+  const body = await req.json().catch(() => ({}))
+  const tier = normalizeTier(body?.tier)
+
+  if (!tier) return NextResponse.json({ ok: false, error: "bad_tier" }, { status: 400 })
+
+  // ✅ siempre responde 200 (no rompas UX)
+  const res = NextResponse.json({ ok: true, tier, marker: "SET_TIER_DB" })
+
+  // cookie (debug/fallback)
+  res.cookies.set("tier", tier, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+    sameSite: "lax",
+    httpOnly: false,
+    secure: false, // localhost
+  })
+
+  // ✅ guardar en Firestore si hay sesión
   try {
-    const token = getCookie(req, "ct_session")
-    if (!token) return NextResponse.json({ error: "Not authed" }, { status: 401 })
+    const c = await cookies()
+    const token =
+      c.get("ct_session")?.value ||
+      c.get("access_token")?.value ||
+      c.get("session")?.value ||
+      c.get("token")?.value ||
+      ""
 
-    const payload = await readSession(token)
-    const address = payload.address
-    if (!address) return NextResponse.json({ error: "Bad session" }, { status: 401 })
-
-    const body = await req.json().catch(() => null)
-    const tier = body?.tier as "BULLION" | "HELLION" | "TORION" | undefined
-    if (!tier) return NextResponse.json({ error: "Missing tier" }, { status: 400 })
-
-    const allowed = ["BULLION", "HELLION", "TORION"] as const
-    if (!allowed.includes(tier)) {
-      return NextResponse.json({ error: "Invalid tier" }, { status: 400 })
+    if (!token) {
+      console.log("⚠️ set-tier: no token cookie found")
+      return res
     }
 
-    await db.collection("access").doc(address).set(
-      {
-        address,
-        tier,
-        active: true,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    )
+    const payload: any = await readSession(token).catch(() => null)
+    const address =
+  payload?.address ||
+  payload?.sub ||
+  payload?.publicKey ||
+  payload?.wallet ||
+  ""
 
-    return NextResponse.json({ ok: true })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Failed" }, { status: 500 })
+    if (!address) {
+      console.log("⚠️ set-tier: session ok but no address")
+      return res
+    }
+
+    await setTier(address, tier as any)
+    console.log("✅ set-tier saved in DB", { address, tier })
+  } catch (e) {
+    console.log("⚠️ set-tier best-effort db error:", e)
   }
+
+  return res
 }
 
 export async function GET() {
-  return NextResponse.json({ error: "Use POST" }, { status: 405 })
+  return NextResponse.json({ ok: false, error: "Use POST" }, { status: 405 })
 }
