@@ -16,19 +16,19 @@ type Props = {
   criticalDD: number
   missionTargetUsd: number
 
-  /** NEW: show big balance + startup presets area */
+  /** show big balance + startup presets area */
   showBalanceCore?: boolean
   startupEnabled?: boolean
   startupHint?: string
   onStartupPreset?: (id: StartupPresetId) => void
 
-  /** NEW: color del balance (verde/rojo) */
+  /** color del balance */
   balanceTone?: string
 
-  /** NEW: delta vs baseline (para mostrar +$ / -$ con comas) */
+  /** delta vs baseline */
   balanceDeltaUsd?: number
 
-  /** NEW: callback para pedir override desde el EquityCard */
+  /** callback override */
   onRequestDisableProtections?: () => void
 }
 
@@ -36,20 +36,15 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
-/** $ con comas, 2 decimales, y signo +/- si lo pides */
 function fmtUsd(n: number, opts?: { sign?: boolean; decimals?: number }) {
   const decimals = opts?.decimals ?? 2
-
   const num = Number(n)
   if (!Number.isFinite(num)) return "$0.00"
-
   const sign = opts?.sign ? (num > 0 ? "+" : num < 0 ? "-" : "") : ""
   const abs = Math.abs(num)
-
   const fixed = abs.toFixed(decimals)
   const [intPart, decPart] = fixed.split(".")
   const intWithCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-
   return `${sign}$${intWithCommas}.${decPart ?? "00"}`
 }
 
@@ -69,11 +64,8 @@ export default function EquityCard({
   onStartupPreset,
   balanceTone = "text-white/90",
   balanceDeltaUsd,
-
-  // ✅ IMPORTANT: desestructurarla (aquí estaba tu fallo)
   onRequestDisableProtections,
 }: Props) {
-  // ✅ estabilidad + no mutación + no recompute gratis
   const seriesUsd = useMemo(() => {
     const base = (equity?.length ? equity : [initialBalance]).map(Number).filter(Number.isFinite)
     return base.length ? base : [Number(initialBalance) || 0]
@@ -82,16 +74,9 @@ export default function EquityCard({
   const lastEquity = seriesUsd[seriesUsd.length - 1] ?? initialBalance
   const firstEquity = seriesUsd[0] ?? initialBalance
 
-  // ✅ WALLET REAL (NO cambia cuando allocas %)
-const walletBalance =
-  Number.isFinite(initialBalance) ? Number(initialBalance) : 0
+  const walletBalance = Number.isFinite(initialBalance) ? Number(initialBalance) : 0
+  const engineEquity = Number.isFinite(lastEquity) ? Number(lastEquity) : walletBalance
 
-// ✅ ENGINE EQUITY (capital de la estrategia)
-const engineEquity =
-  Number.isFinite(lastEquity) ? Number(lastEquity) : walletBalance
-
-
-  // ✅ separar DD NOW (último punto vs peak) y DD WORST (peor histórico)
   const { ddWorstPct, ddNowPct, peakEquity } = useMemo(() => {
     if (seriesUsd.length < 2) return { ddWorstPct: 0, ddNowPct: 0, peakEquity: seriesUsd[0] ?? 0 }
     let peak = seriesUsd[0]
@@ -108,22 +93,19 @@ const engineEquity =
 
   const seriesPct = useMemo(() => {
     const base = firstEquity || 1
-    return seriesUsd.map(v => ((v - base) / base) * 100)
+    return seriesUsd.map((v) => ((v - base) / base) * 100)
   }, [seriesUsd, firstEquity])
 
   const progressPct = clamp((pnl / (missionTargetUsd || 1)) * 100, 0, 100)
 
-  // chart mode toggles (HUD style)
   const [autoZoom, setAutoZoom] = useState(true)
   const [unit, setUnit] = useState<"PCT" | "USD">("PCT")
 
-  // choose chart series based on unit
   const chartValues = useMemo(() => {
-    if (unit === "USD") return seriesUsd.map(v => v - firstEquity)
+    if (unit === "USD") return seriesUsd.map((v) => v - firstEquity)
     return seriesPct
   }, [unit, seriesUsd, seriesPct, firstEquity])
 
-  // compute min/max for stat chips
   const { minV, maxV, lastV, spanV } = useMemo(() => {
     const arr = chartValues.length ? chartValues : [0]
     let mn = arr[0] ?? 0
@@ -136,7 +118,6 @@ const engineEquity =
     return { minV: mn, maxV: mx, lastV: last, spanV: mx - mn }
   }, [chartValues])
 
-  // auto zoom: tighten min/max around data (still with headroom)
   const zoomedRange = useMemo(() => {
     if (!autoZoom) return null
     const span = (maxV - minV) || 1
@@ -207,34 +188,45 @@ const engineEquity =
                 <HudPill label="TARGET" value={fmtUsd(missionTargetUsd)} />
               </div>
 
-              {/* (opcional) Startup presets: si quieres usarlos */}
-              {(onStartupPreset || startupHint) && (
+              {/* ================= STARTUP (MINI 2 + VIEW MORE) ================= */}
+              {(onStartupPreset || startupHint) ? (
                 <div className="mt-4">
-                  <div className="text-[10px] tracking-widest text-white/40">STARTUP</div>
-                  {startupHint ? <div className="mt-1 text-[12px] text-white/55">{startupHint}</div> : null}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] tracking-widest text-white/45">STARTUP PRESETS · QUICK PICKS</div>
+                      <div className="mt-1 text-[12px] text-white/70">
+                        {startupEnabled ? "Two picks only. Full list below." : (startupHint ?? "Locked")}
+                      </div>
+                    </div>
 
-                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
-                    <StartupButton
-                      title="SAFE"
-                      sub="Slow and steady"
-                      disabled={!startupEnabled}
-                      onClick={() => startupEnabled && onStartupPreset?.("SAFE_COPY")}
-                    />
-                    <StartupButton
-                      title="BALANCED"
-                      sub="Adaptive recovery"
-                      disabled={!startupEnabled}
-                      onClick={() => startupEnabled && onStartupPreset?.("BALANCED_COPY")}
-                    />
-                    <StartupButton
-                      title="AGGRO"
-                      sub="Higher volatility"
-                      disabled={!startupEnabled}
-                      onClick={() => startupEnabled && onStartupPreset?.("AGGRO_COPY")}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById("full-presets")
+                        el?.scrollIntoView({ behavior: "smooth", block: "start" })
+                      }}
+                      className="shrink-0 rounded-2xl border border-white/12 bg-black/35 px-3 py-2 text-[10px] tracking-widest text-white/80 hover:bg-white/10 hover:border-white/18"
+                    >
+                      VIEW MORE →
+                    </button>
                   </div>
+
+                  <StartupPresetMiniRow
+                    enabled={!!startupEnabled}
+                    onPick={(id) => onStartupPreset?.(id)}
+                    onViewMore={() => {
+                      const el = document.getElementById("full-presets")
+                      el?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }}
+                  />
+
+                  {!startupEnabled ? (
+                    <div className="mt-2 text-[11px] text-white/45">
+                      {startupHint ?? "Startup locked."}
+                    </div>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* ===== RIGHT: IMPORTANT WARNINGS ===== */}
@@ -266,24 +258,19 @@ const engineEquity =
                   </div>
                 )}
 
-       {/* ✅ OVERRIDE CTA si existe el callback */}
-{onRequestDisableProtections ? (
-  <button
-    type="button"
-    onClick={() => {
-      console.log("[EquityCard] OVERRIDE CLICK ✅")
-      onRequestDisableProtections()
-    }}
-    className="mt-3 w-full rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-left transition hover:bg-rose-500/15 active:scale-[0.99]"
-  >
-    <div className="text-[12px] font-semibold tracking-widest text-rose-200">OVERRIDE</div>
-    <div className="mt-1 text-sm font-semibold text-white/90">Disable protections now</div>
-    <div className="mt-1 text-xs text-white/60">Manual control · higher risk</div>
-  </button>
-) : (
-  <div className="mt-3 text-xs text-white/50">You can disable protections in Advanced mode.</div>
-)}
-
+                {onRequestDisableProtections ? (
+                  <button
+                    type="button"
+                    onClick={() => onRequestDisableProtections()}
+                    className="mt-3 w-full rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-left transition hover:bg-rose-500/15 active:scale-[0.99]"
+                  >
+                    <div className="text-[12px] font-semibold tracking-widest text-rose-200">OVERRIDE</div>
+                    <div className="mt-1 text-sm font-semibold text-white/90">Disable protections now</div>
+                    <div className="mt-1 text-xs text-white/60">Manual control · higher risk</div>
+                  </button>
+                ) : (
+                  <div className="mt-3 text-xs text-white/50">You can disable protections in Advanced mode.</div>
+                )}
               </div>
             </div>
           </div>
@@ -314,7 +301,7 @@ const engineEquity =
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <TogglePill label="AUTO ZOOM" active={autoZoom} onClick={() => setAutoZoom(v => !v)} />
+            <TogglePill label="AUTO ZOOM" active={autoZoom} onClick={() => setAutoZoom((v) => !v)} />
             <TogglePill label="% VS START" active={unit === "PCT"} onClick={() => setUnit("PCT")} />
             <TogglePill label="USD" active={unit === "USD"} onClick={() => setUnit("USD")} />
           </div>
@@ -336,7 +323,7 @@ const engineEquity =
           labelRight={unit === "PCT" ? "MAX" : "MAX USD"}
           fixedRange={zoomedRange ?? undefined}
           baseline={0}
-          formatValue={v => (unit === "PCT" ? `${v.toFixed(2)}%` : fmtUsd(v, { sign: true }))}
+          formatValue={(v: number) => (unit === "PCT" ? `${v.toFixed(2)}%` : fmtUsd(v, { sign: true }))}
         />
 
         <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
@@ -344,8 +331,79 @@ const engineEquity =
           <StatMini label="PnL" value={fmtUsd(pnl, { sign: true })} />
           <StatMini label="MODE" value={autoZoom ? "AUTO ZOOM" : "MANUAL"} />
         </div>
+
+        {/* ✅ PON ESTO EXACTO ANTES de tus tarjetas completas abajo del chart */}
+        <div id="full-presets" className="h-2" />
       </div>
     </section>
+  )
+}
+
+/* ================= QUICK STARTUP MINI ROW ================= */
+
+function StartupPresetMiniRow({
+  enabled,
+  onPick,
+  onViewMore,
+}: {
+  enabled: boolean
+  onPick: (id: StartupPresetId) => void
+  onViewMore: () => void
+}) {
+  const items: { id: StartupPresetId; title: string; sub: string; risk: string; tint: string }[] = [
+    { id: "SAFE_COPY", title: "SAFE", sub: "low variance · tight DD guard", risk: "LOW RISK", tint: "rgba(74,222,128,0.14)" },
+    { id: "BALANCED_COPY", title: "BALANCED", sub: "adaptive recovery · controlled risk", risk: "MID RISK", tint: "rgba(56,189,248,0.16)" },
+  ]
+
+  return (
+    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          disabled={!enabled}
+          onClick={() => enabled && onPick(it.id)}
+          className={[
+            "group rounded-2xl border p-4 text-left transition",
+            "border-emerald-500/10 bg-black/30 hover:bg-white/6",
+            "hover:border-emerald-300/20",
+            "shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_10px_40px_rgba(0,0,0,0.55)]",
+
+            !enabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "",
+          ].join(" ")}
+          style={{
+            boxShadow: "0 0 0 1px rgba(255,255,255,0.06)",
+            background: `radial-gradient(420px 140px at 12% 0%, ${it.tint}, transparent 60%), rgba(0,0,0,0.34)`,
+          }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold tracking-widest text-white/95 truncate">{it.title}</div>
+              <div className="mt-1 text-[11px] text-white/65 leading-snug">{it.sub}</div>
+            </div>
+
+            <div className="shrink-0 rounded-xl border border-white/10 bg-black/35 px-2.5 py-1 text-[10px] tracking-widest text-white/75">
+              {it.risk}
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between">
+            <div className="text-[10px] text-white/45">Tap to run</div>
+            <div className="rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-[10px] tracking-widest text-white/80 group-hover:bg-white/10 group-hover:border-white/18">
+              RUN →
+            </div>
+          </div>
+        </button>
+      ))}
+
+      <button
+        type="button"
+        onClick={onViewMore}
+      >
+        <div className="text-[10px] tracking-widest text-white/45">FULL PRESETS</div>
+        <div className="mt-1 text-[12px] font-semibold tracking-widest text-white/90">VIEW MORE →</div>
+        <div className="mt-1 text-[11px] text-white/55">All drops + windows</div>
+      </button>
+    </div>
   )
 }
 
@@ -383,37 +441,9 @@ function HudPill({ label, value }: { label: string; value: string }) {
   )
 }
 
-function StartupButton({
-  title,
-  sub,
-  onClick,
-  disabled,
-}: {
-  title: string
-  sub: string
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      disabled={!!disabled}
-      onClick={onClick}
-      className={[
-        "group rounded-2xl border px-4 py-3 text-left transition",
-        disabled ? "border-white/10 bg-black/25 opacity-50 cursor-not-allowed" : "border-white/10 bg-black/40 hover:bg-white/5",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between">
-        <div className="text-[12px] font-semibold tracking-widest text-white/85">{title}</div>
-        <div className="text-[10px] text-white/40 group-hover:text-white/55">START ▸</div>
-      </div>
-      <div className="mt-1 text-[11px] text-white/55">{sub}</div>
-    </button>
-  )
-}
-
 function HealthChip({ health }: { health: Health }) {
-  const label = health === "stable" ? "STABLE" : health === "warning" ? "WARNING" : health === "critical" ? "CRITICAL" : "—"
+  const label =
+    health === "stable" ? "STABLE" : health === "warning" ? "WARNING" : health === "critical" ? "CRITICAL" : "—"
 
   const cls =
     health === "stable"
@@ -450,7 +480,8 @@ function DrawdownProximitySensor({
   const isCrit = drawdownPct <= criticalDD
   const tag = isCrit ? "CRITICAL" : isWarn ? "WARNING" : "SAFE"
 
-  const fill = isCrit ? "rgba(239,68,68,0.70)" : isWarn ? "rgba(250,204,21,0.60)" : "rgba(34,197,94,0.55)"
+  const fill =
+    isCrit ? "rgba(239,68,68,0.70)" : isWarn ? "rgba(250,204,21,0.60)" : "rgba(34,197,94,0.55)"
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/40 p-3">
@@ -494,7 +525,6 @@ function EquitySpeedSensor({ equity }: { equity: number[] }) {
     return equity[equity.length - 1] - equity[equity.length - 2]
   }, [equity])
 
-  // ✅ escalado un poquito mejor (0.2% de equity previo como techo, mínimo $5)
   const maxAbs = useMemo(() => {
     const prev = equity?.[equity.length - 2] ?? 0
     return Math.max(5, Math.abs(prev) * 0.002)
@@ -513,7 +543,9 @@ function EquitySpeedSensor({ equity }: { equity: number[] }) {
         </div>
         <div className="text-right">
           <div className="text-[10px] tracking-widest text-white/45">{dir}</div>
-          <div className="mt-1 text-[12px] text-white/80 font-semibold tabular-nums">{fmtUsd(speed, { sign: true })}</div>
+          <div className="mt-1 text-[12px] text-white/80 font-semibold tabular-nums">
+            {fmtUsd(speed, { sign: true })}
+          </div>
         </div>
       </div>
 
@@ -552,7 +584,9 @@ function MissionThruster({ progressPct, pnl, target }: { progressPct: number; pn
         </div>
         <div className="text-right">
           <div className="text-[10px] tracking-widest text-white/45">PROG</div>
-          <div className="mt-1 text-[12px] text-white/80 font-semibold tabular-nums">{Math.round(progressPct)}%</div>
+          <div className="mt-1 text-[12px] text-white/80 font-semibold tabular-nums">
+            {Math.round(progressPct)}%
+          </div>
         </div>
       </div>
 
@@ -722,8 +756,8 @@ function MiniLineChart({
   const hv = hover != null ? raw[hover] : null
   const hy = hover != null ? sy(raw[hover]) : null
 
-  const lastV = raw[raw.length - 1] ?? 0
-  const lastIsPos = lastV >= baseline
+  const lastRaw = raw[raw.length - 1] ?? 0
+  const lastIsPos = lastRaw >= baseline
 
   return (
     <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30">
@@ -758,7 +792,6 @@ function MiniLineChart({
         }}
         onTouchEnd={() => setHoverIdx(null)}
       >
-        {/* grid */}
         {Array.from({ length: 11 }).map((_, i) => {
           const x = (i / 10) * w
           return <line key={`gx-${i}`} x1={x} y1={0} x2={x} y2={h} stroke="rgba(255,255,255,0.05)" />
@@ -768,26 +801,26 @@ function MiniLineChart({
           return <line key={`gy-${i}`} x1={0} y1={y} x2={w} y2={y} stroke="rgba(255,255,255,0.05)" />
         })}
 
-        {/* baseline */}
         <line x1={0} y1={baselineY} x2={w} y2={baselineY} stroke="rgba(255,255,255,0.10)" />
 
-        {/* areas */}
         {negAreaPath ? <path d={negAreaPath} fill="rgba(244,63,94,0.10)" /> : null}
         {posAreaPath ? <path d={posAreaPath} fill="rgba(34,197,94,0.10)" /> : null}
 
-        {/* line (smooth) */}
         <path d={linePath} fill="none" stroke={stroke} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
 
-        {/* last point */}
         <circle cx={lastPoint.x} cy={lastPoint.y} r={6} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.25)" />
         <circle cx={lastPoint.x} cy={lastPoint.y} r={2.75} fill={stroke} />
 
-        {/* hover cursor */}
         {hover != null && hx != null && hy != null && hv != null ? (
           <>
             <line x1={hx} y1={0} x2={hx} y2={h} stroke="rgba(255,255,255,0.10)" />
             <circle cx={hx} cy={hy} r={6} fill="rgba(0,0,0,0.60)" stroke="rgba(255,255,255,0.25)" />
-            <circle cx={hx} cy={hy} r={2.75} fill={hv >= baseline ? "rgba(34,197,94,0.85)" : "rgba(244,63,94,0.85)"} />
+            <circle
+              cx={hx}
+              cy={hy}
+              r={2.75}
+              fill={hv >= baseline ? "rgba(34,197,94,0.85)" : "rgba(244,63,94,0.85)"}
+            />
 
             <g transform={`translate(${clamp(hx + 12, pad, w - 260)}, ${clamp(hy - 34, 18, h - 58)})`}>
               <rect width="248" height="44" rx="12" fill="rgba(0,0,0,0.72)" stroke="rgba(255,255,255,0.12)" />
@@ -807,7 +840,6 @@ function MiniLineChart({
           </>
         ) : null}
 
-        {/* last value label (solo si no hay hover) */}
         {hover == null ? (
           <text
             x={clamp(lastPoint.x + 10, pad, w - pad)}
@@ -816,11 +848,10 @@ function MiniLineChart({
             fontSize="12"
             fontWeight="700"
           >
-            {fmt(lastV)}
+            {fmt(lastRaw)}
           </text>
         ) : null}
 
-        {/* min/max labels */}
         <text x={pad} y={14} fill="rgba(255,255,255,0.35)" fontSize="10" letterSpacing="1.5">
           {labelRight ?? "MAX"} {fmt(max)}
         </text>
@@ -828,12 +859,10 @@ function MiniLineChart({
           {labelLeft ?? "MIN"} {fmt(min)}
         </text>
 
-        {/* baseline label */}
         <text x={w - pad - 90} y={clamp(baselineY - 6, 14, h - 10)} fill="rgba(255,255,255,0.32)" fontSize="10">
           base {fmt(baseline)}
         </text>
 
-        {/* tiny state label */}
         <text x={w - pad - 140} y={14} fill="rgba(255,255,255,0.32)" fontSize="10" letterSpacing="1.2">
           {lastIsPos ? "ABOVE" : "BELOW"} BASE
         </text>

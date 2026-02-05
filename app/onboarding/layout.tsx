@@ -13,7 +13,7 @@ function normalizeTier(t?: string | null) {
 }
 
 // ✅ Onboarding ES PUBLICO.
-// Si ya estás authed + active + tier (en DB), no tiene sentido ver onboarding: te mandamos a /enter?tier=...
+// Si ya estás authed y ya tienes tier en DB => no hay razón para ver onboarding.
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const store = await cookies()
   const token = store.get("ct_session")?.value
@@ -32,20 +32,19 @@ export default async function OnboardingLayout({ children }: { children: React.R
 
   if (!address) return <>{children}</>
 
-  // 3) Si ya tiene acceso activo + tier => brinca
+  // 3) Si ya tiene tier guardado => brinca a /enter?tier=...
   try {
     const snap = await db.collection("access").doc(address).get()
-    if (snap.exists) {
-      const data = snap.data() as any
-      const tier = normalizeTier(data?.tier)
+    if (!snap.exists) return <>{children}</>
 
-      if (data?.active === true && tier) {
-        // ✅ Mantén el tier por query para que /enter decida dashboard
-        redirect(`/enter?tier=${encodeURIComponent(tier)}`)
-      }
+    const data = snap.data() as any
+    const tier = normalizeTier(data?.tier)
+
+    // ✅ NUEVA LOGICA: si hay tier, entra (Bullion free)
+    if (tier) {
+      redirect(`/enter?tier=${encodeURIComponent(tier)}`)
     }
   } catch {
-    // si firestore falla, no bloquees onboarding
     return <>{children}</>
   }
 

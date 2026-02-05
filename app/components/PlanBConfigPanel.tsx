@@ -2,9 +2,10 @@
 
 import type { StrategyHealth } from "./StrategyTransitionPreview"
 
+
 /* ================= TYPES ================= */
 
-type TriggerOption = -4 | -6 | -8
+export type TriggerOption = -4 | -6 | -8
 
 type Props = {
   enabled: boolean

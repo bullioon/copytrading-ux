@@ -17,6 +17,8 @@ import { useEnginePolicy } from "../hooks/useEnginePolicy"
 import BullionsHeader from "./BullionsHeader"
 import LiveTradesMT5 from "./LiveTradesMT5"
 import EquityCard from "./EquityCard"
+import LiveActivityFeed from "@/app/components/LiveActivityFeed"
+
 
 import StrategyAssignmentPanel from "@/app/components/StrategyAssignmentPanel"
 import PlanBConfigPanel from "./PlanBConfigPanel"
@@ -29,6 +31,42 @@ import { useSixXSFeedback } from "../hooks/useSixXSFeedback"
 
 // ✅ ESTE IMPORT FALTABA
 import PhantomDeposit from "@/app/components/PhantomDeposit"
+import type { TriggerOption } from "./PlanBConfigPanel"
+
+
+/* ================= TYPES ================= */
+
+type TabKey = "dashboard" | "advanced" | "wallet" | "support"
+
+type WalletTxKind = "DEPOSIT" | "WITHDRAW"
+
+
+type WalletTx = {
+  id: string
+  kind: WalletTxKind
+  amountUsd: number
+  token: "USDC" | "SOL" | "USDT" | string
+  ts: number // ms
+  status?: "CONFIRMED" | "PENDING" | "FAILED"
+  sig?: string // solana signature (optional)
+  note?: string
+}
+
+function fmtShortTime(ts: number) {
+  const d = new Date(ts)
+  return d.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+}
+
+function kindLabel(k: WalletTxKind) {
+  return k === "DEPOSIT" ? "DEPOSIT" : "WITHDRAW"
+}
+
+function kindTone(k: WalletTxKind) {
+  return k === "DEPOSIT"
+    ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100/90"
+    : "border-sky-300/20 bg-sky-300/10 text-sky-100/90"
+}
+
 
 /* ================= TYPES ================= */
 
@@ -94,6 +132,31 @@ function fmtDuration(sec: number) {
 
   if (days > 0) return `${days}d ${HH}:${MM}:${SS}`
   return `${HH}:${MM}:${SS}`
+}
+
+/* ================= phone detection ================= */
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mql = window.matchMedia(query)
+
+    const onChange = () => setMatches(!!mql.matches)
+    onChange()
+
+    // Safari old fallback
+    if (mql.addEventListener) mql.addEventListener("change", onChange)
+    else mql.addListener(onChange)
+
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener("change", onChange)
+      else mql.removeListener(onChange)
+    }
+  }, [query])
+
+  return matches
 }
 
 /* ================= THEME ================= */
@@ -508,6 +571,8 @@ function SixXSTerminal({
 
 /* ================= PRO STRATEGY FEED (SSR SAFE) ================= */
 
+
+
 function ProStrategyFeed({
   tier,
   borderClass,
@@ -523,6 +588,7 @@ function ProStrategyFeed({
 }) {
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => setHydrated(true), [])
+
 
   const [now, setNow] = useState(0)
   const [offers, setOffers] = useState<ProOffer[]>([])
@@ -649,7 +715,8 @@ function ProStrategyFeed({
     </section>
   )
 }
-/* ================= QUICK TOP STRATEGIES (SSR SAFE) ================= */
+
+
 
 function QuickCopyTopStrategies({
   borderClass,
@@ -671,21 +738,89 @@ function QuickCopyTopStrategies({
   enabled: boolean
   hint?: string
   onPick: (id: StartupPresetId) => void
-
-  // ✅ NUEVO: CTA del banner
   onSpecialCta: () => void
-
   runActive: boolean
   runPresetId: StartupPresetId | null
   runRemainingSec: number
   onStop: () => void
   starting: boolean
-
   specialHot: boolean
   signals: { drawdownPct: number; lossStreak: number; equityFlatMs: number }
 }) {
 
+// ✅ AHORA sí: hooks dentro del component
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => setHydrated(true), [])
+
+  const [top, setTop] = useState<Record<StartupPresetId, TopCard>>({
+    SAFE_COPY: {
+      name: "SAFE COPY",
+      subtitle: "Low variance · tight DD guard",
+      preset: "SAFE_COPY",
+    },
+    BALANCED_COPY: {
+      name: specialHot ? "RECOVERY ACCESS" : "BALANCED",
+      subtitle: specialHot
+        ? "Recovery window detected · fast attempt"
+        : "Fast entry · controlled risk",
+      preset: "BALANCED_COPY",
+    },
+    AGGRO_COPY: {
+      name: "AGGRO",
+      subtitle: "High vol · aggressive timing",
+      preset: "AGGRO_COPY",
+    },
+  })
+
   const timeLeft = useMemo(() => fmtDuration(runRemainingSec), [runRemainingSec])
+
+  // ✅ PRESET DROP WINDOWS (max 6d)
+  const MAX_DAYS = 6
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  type WindowState = { startAt: number; durSec: number }
+  const [win, setWin] = useState<Record<StartupPresetId, WindowState> | null>(null)
+
+  useEffect(() => {
+    if (!hydrated) return
+    const now = Date.now()
+    const mk = (minD: number, maxD: number): WindowState => {
+      const d = Math.min(MAX_DAYS, minD + Math.floor(Math.random() * (maxD - minD + 1)))
+      const durSec = d * 24 * 60 * 60
+      const elapsed = Math.floor(Math.random() * Math.max(1, Math.floor(durSec * 0.65)))
+      return { startAt: now - elapsed * 1000, durSec }
+    }
+    setWin({
+      SAFE_COPY: mk(1, 2),
+      BALANCED_COPY: mk(2, 4),
+      AGGRO_COPY: mk(3, 6),
+    })
+  }, [hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const t = setInterval(() => {
+      setWin(prev => {
+        if (!prev) return prev
+        const now = Date.now()
+        const keys: StartupPresetId[] = ["SAFE_COPY", "BALANCED_COPY", "AGGRO_COPY"]
+        const k = keys[Math.floor(Math.random() * keys.length)]
+        const mk = (minD: number, maxD: number): WindowState => {
+          const d = Math.min(MAX_DAYS, minD + Math.floor(Math.random() * (maxD - minD + 1)))
+          const durSec = d * 24 * 60 * 60
+          return { startAt: now, durSec }
+        }
+        const next = { ...prev }
+        next[k] = k === "SAFE_COPY" ? mk(1, 2) : k === "BALANCED_COPY" ? mk(2, 4) : mk(3, 6)
+        return next
+      })
+    }, 12000)
+    return () => clearInterval(t)
+  }, [hydrated])
 
   // ================= SPECIAL WINDOW UX =================
 const specialLabel = useMemo(() => {
@@ -711,22 +846,6 @@ const effectiveBalancedName = specialHot ? "RECOVERY ACCESS" : "BALANCED"
 const effectiveBalancedSubtitle = specialHot
   ? "Recovery window detected · higher variance · fast attempt"
   : "Fast entry · controlled risk"
-
-
-
-const TOP_FALLBACK: Record<StartupPresetId, TopCard> = {
-  SAFE_COPY: { name: "SAFE COPY", subtitle: "Low variance · tight DD guard", preset: "SAFE_COPY" },
-  BALANCED_COPY: {
-    name: specialHot ? "RECOVERY ACCESS" : "BALANCED",
-    subtitle: specialHot ? "Recovery window detected · fast attempt" : "Fast entry · controlled risk",
-    preset: "BALANCED_COPY",
-  },
-  AGGRO_COPY: { name: "AGGRO", subtitle: "High vol · aggressive timing", preset: "AGGRO_COPY" },
-}
-
-  const [top, setTop] = useState<Record<StartupPresetId, TopCard>>(TOP_FALLBACK)
-  const [hydrated, setHydrated] = useState(false)
-  useEffect(() => setHydrated(true), [])
 
   useEffect(() => {
     if (!hydrated) return
@@ -810,6 +929,14 @@ const renderPresetButton = (id: StartupPresetId) => {
   const info = PRESET_INFO[id]
   const recommended = id === "BALANCED_COPY"
 
+  const w = win?.[id]
+const now = Date.now()
+const elapsedSec = w ? Math.max(0, Math.floor((now - w.startAt) / 1000)) : 0
+const remainingSec = w ? Math.max(0, w.durSec - elapsedSec) : 0
+const windowPct = w && w.durSec > 0 ? Math.min(100, Math.max(0, (elapsedSec / w.durSec) * 100)) : 0
+const windowLeft = w ? fmtDuration(remainingSec) : "—"
+
+
   return (
     <button
       key={id}
@@ -846,6 +973,29 @@ const renderPresetButton = (id: StartupPresetId) => {
         <span className="text-white/75 font-semibold">{info.dd}</span> · {info.pace}
         <br />
         <span className="text-white/70">{info.bestFor}</span>
+
+        {/* WINDOW BAR */}
+<div className="mt-3">
+  <div className="flex items-center justify-between text-[10px] tracking-widest text-white/55">
+    <span className="inline-flex items-center gap-2">
+      <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
+      DROP WINDOW
+    </span>
+    <span className="text-white/70">{windowLeft}</span>
+  </div>
+
+  <div className="mt-2 h-[6px] w-full overflow-hidden rounded-full border border-white/10 bg-black/40">
+    <div
+      className="h-full rounded-full bg-white/25"
+      style={{ width: `${windowPct}%` }}
+    />
+  </div>
+
+  <div className="mt-2 text-[10px] text-white/55">
+    Limited slot window · rotates automatically.
+  </div>
+</div>
+
       </div>
     </button>
   )
@@ -882,7 +1032,7 @@ const renderPresetButton = (id: StartupPresetId) => {
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] tracking-widest text-white/60">TOP STRATEGIES WORKING</div>
+          <div className="text-[10px] tracking-widest text-white/60">STARTUP PRESETS · LIMITED WINDOWS</div>
 
           {!runActive ? (
             <div className="mt-1 text-[12px] text-white/70">
@@ -983,22 +1133,328 @@ const renderPresetButton = (id: StartupPresetId) => {
 
 /* ================= DASHBOARD ================= */
 
+
+function MobileTabBar({
+  tab,
+  onTab,
+}: {
+  tab: TabKey
+  onTab: (k: TabKey) => void
+}) {
+  const items: Array<{ k: TabKey; label: string; sub: string }> = [
+    { k: "dashboard", label: "DASH", sub: "core" },
+    { k: "advanced", label: "ADV", sub: "roles" },
+    { k: "wallet", label: "WALLET", sub: "funds" },
+    { k: "support", label: "SUP", sub: "help" },
+  ]
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/70 backdrop-blur">
+      <div className="mx-auto max-w-5xl px-3 py-2">
+        <div className="grid grid-cols-4 gap-2">
+          {items.map(it => {
+            const active = tab === it.k
+            return (
+              <button
+                key={it.k}
+                onClick={() => onTab(it.k)}
+                className={[
+                  "rounded-2xl border px-2 py-2 text-center transition",
+                  active
+                    ? "border-white/20 bg-white/10"
+                    : "border-white/10 bg-black/40 hover:bg-white/5",
+                ].join(" ")}
+              >
+                <div className={["text-[11px] tracking-widest font-semibold", active ? "text-white/90" : "text-white/60"].join(" ")}>
+                  {it.label}
+                </div>
+                <div className={["text-[9px] tracking-widest", active ? "text-white/55" : "text-white/35"].join(" ")}>
+                  {it.sub}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+const TABS: ReadonlyArray<readonly [TabKey, string]> = [
+  ["dashboard", "DASH"],
+  ["advanced", "ADVANCED"],
+  ["wallet", "WALLET"],
+  ["support", "SUPPORT"],
+] as const
+
+
 export default function DashboardView({ account: walletAccount }: { account: Account }) {
   const router = useRouter()
+
+  
+
+const [tab, setTab] = useState<TabKey>("dashboard")
+
+  const [walletTxs, setWalletTxs] = useState<WalletTx[]>([
+    {
+      id: "seed-dep",
+      kind: "DEPOSIT",
+      amountUsd: 0.12,
+      token: "SOL",
+      ts: Date.now() - 1000 * 60 * 60 * 6,
+      status: "CONFIRMED",
+      note: "Test deposit · Phantom",
+    },
+  ])
+
+  function pushWalletTx(tx: Omit<WalletTx, "id" | "ts">) {
+    setWalletTxs(prev => [
+      { id: `tx-${Date.now()}`, ts: Date.now(), ...tx },
+      ...prev,
+    ])
+  }
+
+  const walletTxsSorted = useMemo(
+    () => [...walletTxs].sort((a, b) => b.ts - a.ts),
+    [walletTxs]
+  )
+
+
+function goTab(next: TabKey) {
+  setTab(next)
+  if (typeof window !== "undefined") {
+    const url = new URL(window.location.href)
+    url.searchParams.set("tab", next)
+    window.history.replaceState({}, "", url.toString())
+  }
+}
+
   const theme = TIER_THEME[walletAccount.tier]
 
+const isTorion = walletAccount.tier === "TORION"
+const depositMinUsd = isTorion ? 0 : 50
+
+
+  
   const VERSION = "v6.9.0"
 
-  // ✅ SSR/hydration stable guard
+    const isMobile = useMediaQuery("(max-width: 768px)")
+
+    // ✅ SSR / hydration stable guard (DashboardView scope)
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => setHydrated(true), [])
 
-  /* ===== SIMPLE MODE vs ADVANCED ===== */
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  function WalletActivity({ items }: { items: WalletTx[] }) {
+  return (
+    <div className="mt-4 rounded-3xl border border-white/10 bg-black/35 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] tracking-widest text-white/45">TRANSACTIONS</div>
+          <div className="mt-1 text-[12px] text-white/65">Real deposits & withdrawals</div>
+        </div>
+        <div className="text-[10px] tracking-widest text-white/45">
+          {items.length ? `${items.length} items` : "EMPTY"}
+        </div>
+      </div>
 
-  /* ✅ BULLIONS BALANCE (INTERNAL, CREDITED BY DEPOSITS) */
-  const [bullionsBalanceUsd, setBullionsBalanceUsd] = useState<number>(0)
-  const [balanceSeedUsd, setBalanceSeedUsd] = useState<number | null>(null)
+      {!items.length ? (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-[12px] text-white/60">
+          No transactions yet. Make a deposit to start building history.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {items.slice(0, 8).map((tx) => {
+            const isDep = tx.kind === "DEPOSIT"
+            const status = tx.status ?? "CONFIRMED"
+
+            return (
+              <div
+                key={tx.id}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3"
+              >
+
+                
+                {/* LEFT */}
+                
+                <div className="min-w-0 flex items-center gap-3">
+                  {/* icon bubble */}
+                  <div
+                    className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-black/35"
+                    style={{
+                      boxShadow: isDep
+                        ? "0 0 0 1px rgba(255,255,255,0.05), 0 0 20px rgba(34,197,94,0.12)"
+                        : "0 0 0 1px rgba(255,255,255,0.05), 0 0 20px rgba(56,189,248,0.12)",
+                    }}
+                  >
+                    <span className="text-[14px]">{isDep ? "⬇" : "⬆"}</span>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full border px-2 py-1 text-[10px] tracking-widest ${kindTone(tx.kind)}`}>
+                        {kindLabel(tx.kind)}
+                      </span>
+                      <span className="text-[10px] tracking-widest text-white/45">{status}</span>
+                    </div>
+
+                    <div className="mt-1 truncate text-[12px] font-semibold text-white/85">
+                      {tx.note ?? (isDep ? "Incoming funds" : "Outgoing transfer")}
+                    </div>
+
+                    <div className="mt-1 text-[10px] tracking-widest text-white/45">
+                      {new Date(tx.ts).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT */}
+                <div className="text-right">
+                  <div className="text-[12px] font-semibold tabular-nums text-white/90">
+                    {isDep ? "+" : "-"}
+                    {fmtUsd(tx.amountUsd, { decimals: 2 })}
+                  </div>
+                  <div className="mt-1 text-[10px] tracking-widest text-white/50">{tx.token}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ================= PRESET DROPS (ROTATING) =================
+
+const DROPS = [
+  { id: "safe", title: "OBSIDIAN EDGE", sub: "low variance · tight DD guard", tag: "SAFE" },
+  { id: "balanced", title: "NEON HYDRA", sub: "adaptive recovery · mid tempo", tag: "BAL" },
+  { id: "aggro", title: "HELLION RUSH", sub: "higher volatility · faster flips", tag: "AGGRO" },
+  { id: "safe2", title: "TORION COIL", sub: "patient entries · defense first", tag: "SAFE" },
+  { id: "bal2", title: "QUANTUM DRIFT", sub: "smooth curve · controlled risk", tag: "BAL" },
+  { id: "agg2", title: "VORTEX SNAP", sub: "momentum bias · sharp exits", tag: "AGGRO" },
+]
+
+function shuffle<T>(a: T[]) {
+  const x = [...a]
+  for (let i = x.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[x[i], x[j]] = [x[j], x[i]]
+  }
+  return x
+}
+
+const [drops, setDrops] = useState(() => shuffle(DROPS).slice(0, 3))
+
+useEffect(() => {
+  const t = setInterval(() => {
+    setDrops(shuffle(DROPS).slice(0, 3))
+  }, 4200)
+  return () => clearInterval(t)
+}, [])
+
+
+// ✅ Lite mode solo por query (?lite=1)
+const lite = useMemo(() => {
+  if (typeof window === "undefined") return false
+  return new URLSearchParams(window.location.search).get("lite") === "1"
+}, [])
+
+
+const MIN_BULLION_DEPOSIT = 50
+
+ 
+/* ================= WALLET CARD (PHANTOM / SOLANA INSPIRED) ================= */
+const DEMO_CARD_BALANCE = 336 // visual only
+const [hoverCard, setHoverCard] = useState(false)
+const [animUsd, setAnimUsd] = useState(0)
+
+useEffect(() => {
+  // anima 0 -> DEMO_CARD_BALANCE cuando NO está hover
+  if (hoverCard) return
+
+  let raf = 0
+  const from = 0
+  const to = DEMO_CARD_BALANCE
+  const dur = 1100
+  const t0 = performance.now()
+
+  const tick = (t: number) => {
+    const p = Math.min(1, (t - t0) / dur)
+    const e = 1 - Math.pow(1 - p, 3) // easing suave
+    setAnimUsd(from + (to - from) * e)
+    if (p < 1) raf = requestAnimationFrame(tick)
+  }
+
+  raf = requestAnimationFrame(tick)
+  return () => cancelAnimationFrame(raf)
+}, [hoverCard])
+
+const cardShownUsd = hoverCard ? 0 : animUsd
+
+
+/* ================= BULLION / WALLET BALANCE ================= */
+
+const isBullion = walletAccount.tier === "BULLION"
+
+// saldo interno (Phantom → crédito interno)
+const [bullionsBalanceUsd, setBullionsBalanceUsd] = useState<number>(0)
+
+type WalletTxKind = "DEPOSIT" | "WITHDRAW"
+type WalletTx = {
+  id: string
+  kind: WalletTxKind
+  amountUsd: number
+  token: "USDC" | "SOL" | "USDT" | string
+  ts: number
+  status?: "CONFIRMED" | "PENDING" | "FAILED"
+  note?: string
+}
+
+
+// saldo total visible (base + interno)
+const [walletBalanceUsd, setWalletBalanceUsd] = useState<number>(0)
+useEffect(() => {
+  const tierU = String(walletAccount?.tier ?? "").toUpperCase()
+
+  // ✅ seeds por tier (lo que tú pediste)
+  const tierSeed =
+    tierU === "HELLION" ? 1500 :
+    tierU === "TORION" ? 3000 :
+    0
+
+  // ✅ DEMON seed: solo testing
+  const isDemon =
+    tierU === "DEMON" ||
+    String((walletAccount as any)?.handle ?? "").toLowerCase() === "demon" ||
+    String((walletAccount as any)?.name ?? "").toLowerCase() === "demon"
+  const demonSeedUsd = 50
+
+  const rawBase = Number(walletAccount?.baseBalance)
+  const accountBase = Number.isFinite(rawBase) ? rawBase : 0
+
+  // ✅ prioridad:
+  // - BULLION: 0
+  // - DEMON: 50
+  // - HELLION/TORION: seed si accountBase viene 0
+  // - si accountBase > 0: respeta accountBase
+  const baseBalance =
+    isBullion ? 0 :
+    isDemon ? demonSeedUsd :
+    (accountBase > 0 ? accountBase : tierSeed)
+
+  const internal = Number(bullionsBalanceUsd ?? 0)
+  setWalletBalanceUsd(Math.max(0, baseBalance + internal))
+}, [
+  walletAccount?.tier,
+  walletAccount?.baseBalance,
+  (walletAccount as any)?.handle,
+  (walletAccount as any)?.name,
+  bullionsBalanceUsd,
+  isBullion,
+])
 
   /* ===== FX + METRICS ===== */
   const [fx, setFx] = useState<FxBurst>("NONE")
@@ -1016,9 +1472,11 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
         time: Date.now(),
         ...e,
       }
+      
       return [next, ...prev].slice(0, 50)
     })
   }
+
 
   type QuickEvent =
   | { type: "SPECIAL_TRIGGERED"; ts: number; dd: number; streak: number; flatMs: number }
@@ -1154,7 +1612,9 @@ const [activeRole, setActiveRole] = useState<Role | null>(null)
 
   /* ===== DRAWDOWN + HEALTH ===== */
 const drawdown = useEquityDrawdown({ equityBuffer })
-const [planBTrigger, setPlanBTrigger] = useState<-4 | -6 | -8>(-6)
+const [planBTrigger, setPlanBTrigger] = useState<TriggerOption>(-6)
+
+
 
 /* ===== PLAN B TRADER (BACKUP) ===== */
 const [planBTraderId, setPlanBTraderId] = useState<number | null>(null)
@@ -1170,35 +1630,52 @@ const [allocatedUsd, setAllocatedUsd] = useState<number>(0)
 /* ===== RISK BRAKE OVERRIDE ===== */
 const [disableRiskBrake, setDisableRiskBrake] = useState(false)
 
-/* ================= WALLET REAL (TOTAL, NUNCA DEPENDE DE ALLOCATION) ================= */
-/**
- * ✅ Este es el saldo REAL del usuario (wallet/back-end) + tus bullions internos.
- * ⚠️ IMPORTANTE: si por un render llega 0 (undefined/api lag), NO pisamos el último valor bueno.
- */
-const [walletBalanceUsd, setWalletBalanceUsd] = useState<number>(0)
 
 useEffect(() => {
-  const base = Number(walletAccount?.baseBalance ?? 0)
+  const tierU = String(walletAccount?.tier ?? "").toUpperCase()
+
+  // ✅ DEMON seed: solo para testing
+  const isDemon =
+    String((walletAccount as any)?.handle ?? "").toLowerCase() === "demon" ||
+    String((walletAccount as any)?.name ?? "").toLowerCase() === "demon" ||
+    String((walletAccount as any)?.tier ?? "").toUpperCase() === "DEMON"
+
+  const demonSeedUsd = 50
+
+  // ✅ base:
+  // - DEMON: 50
+  // - BULLION: 0 (free)
+  // - otros: baseBalance del account
+  const rawAccountBase = Number(walletAccount?.baseBalance)
+  const accountBase = Number.isFinite(rawAccountBase) ? rawAccountBase : 0
+
+const tierSeed =
+  tierU === "HELLION" ? 1500 :
+  tierU === "TORION" ? 3000 :
+  0
+
+const base =
+  isDemon ? demonSeedUsd :
+  isBullion ? 0 :
+  (accountBase > 0 ? accountBase : tierSeed)
+
   const bullion = Number(bullionsBalanceUsd ?? 0)
 
-  const total = Math.max(
-    0,
-    (Number.isFinite(base) ? base : 0) +
-      (Number.isFinite(bullion) ? bullion : 0)
-  )
+  const total = Math.max(0, base + bullion)
 
-  // ✅ anti-0: si ya tenías algo bueno, no lo mates con 0 temporal
-  setWalletBalanceUsd(prev => {
-    if (total <= 0) return prev
-    // si sube (depósitos reales/bullions) actualiza
-    if (total > prev) return total
-    // si baja, normalmente NO debería bajar por allocation (solo por withdrawals reales)
-    // si quieres permitir bajadas reales luego, aquí meterías una flag de "withdraw"
-    return prev
-  })
-}, [walletAccount?.baseBalance, bullionsBalanceUsd])
+  setWalletBalanceUsd(total)
+}, [
+  walletAccount?.tier,
+  walletAccount?.baseBalance,
+  bullionsBalanceUsd,
+  isBullion,
+  (walletAccount as any)?.handle,
+  (walletAccount as any)?.name,
+])
 
 const realBalanceUsd = walletBalanceUsd
+const canTrade = !isBullion || realBalanceUsd >= MIN_BULLION_DEPOSIT
+
 
 /* ===== AVAILABLE FOR ALLOCATION (NO DEPENDE DEL ENGINE) ===== */
 const availableUsd = run.active ? Math.max(0, realBalanceUsd - allocatedUsd) : realBalanceUsd
@@ -1796,12 +2273,17 @@ if (isSim) {
 }
 
     // ✅ DURACIÓN EN DÍAS (UI strategy run window)
-    const durationSec =
-      id === "SAFE_COPY"
-        ? 24 * 60 * 60
-        : id === "BALANCED_COPY"
-          ? 3 * 24 * 60 * 60
-          : 7 * 24 * 60 * 60
+ 
+    const MAX_DAYS = 6
+
+// “perfil” base: safe tiende a menos, aggro tiende a más, pero siempre <= 6
+const days =
+  id === "SAFE_COPY" ? (1 + Math.floor(Math.random() * 2)) :          // 1–2
+  id === "BALANCED_COPY" ? (2 + Math.floor(Math.random() * 3)) :      // 2–4
+  (3 + Math.floor(Math.random() * 4))                                 // 3–6
+
+const durationSec = Math.min(MAX_DAYS, days) * 24 * 60 * 60
+
 
     setRun({
       active: true,
@@ -1914,13 +2396,14 @@ setTimeout(() => {
   )
   const hasAtLeastOneRole = assignedCount > 0
   const canApply = hasAtLeastOneRole && !run.active && !starting && !isBlocked
-/* ===== GUARD (ONLY ONCE) ===== */
+
+
+  /* ===== GUARD (ONLY ONCE) ===== */
 const waiting =
   !hydrated ? "hydration" :
   !market ? "market" :
   !metrics ? "metrics" :
   null
-
 
   if (waiting) {
   return (
@@ -1930,6 +2413,103 @@ const waiting =
       <div className="p-6 text-xs text-white/60">
         loading: <span className="text-white/90 font-semibold">{waiting}</span>
       </div>
+    </main>
+  )
+}
+
+// ================= LITE MODE (QUERY FLAG) =================
+if (lite) {
+  const equityLite = realBalanceUsd + enginePnl
+
+  return (
+    <main className={`min-h-screen bg-black font-mono ${theme.text} pb-28`}>
+      <AddictiveNeonStyles />
+
+      <BullionsHeader
+        tier={walletAccount.tier}
+        status={status}
+        connectedTraders={connectedTraderObjects.length}
+        openTrades={openTrades.length}
+      />
+
+      <Toast toast={toast} />
+
+      <div className="p-4 space-y-3">
+        {/* HERO CARD */}
+        <div
+          className="rounded-[24px] border border-white/10 bg-black/55 p-4 neon-card"
+          style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 60px ${theme.glow}` }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] tracking-widest text-white/55">LITE MODE</div>
+              <div className="mt-1 text-[13px] text-white/90 font-semibold">Mobile dashboard</div>
+              <div className="mt-1 text-[11px] text-white/55">
+                Clean + fast. Full UI: remove <span className="text-white/80 font-semibold">?lite=1</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-2">
+              <div className="text-[10px] tracking-widest text-white/45">STATUS</div>
+              <div className="mt-1 text-[12px] text-white/85 font-semibold">
+                {run.active ? "RUNNING" : "IDLE"}
+              </div>
+            </div>
+          </div>
+
+          {/* BIG METRIC */}
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
+            <div className="text-[10px] tracking-widest text-white/45">EQUITY</div>
+            <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
+              {fmtUsd(equityLite)}
+            </div>
+            <div className="mt-1 text-[11px] text-white/55">
+              Wallet {fmtUsd(realBalanceUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}
+            </div>
+          </div>
+
+
+          {/* QUICK ACTIONS */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => goTab("wallet")}
+              className="rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-[11px] tracking-widest text-white/80 hover:bg-white/5"
+            >
+              WALLET
+            </button>
+
+            <button
+              onClick={() => goTab("advanced")}
+              className="rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-[11px] tracking-widest text-white/80 hover:bg-white/5"
+            >
+              ADVANCED
+            </button>
+          </div>
+        </div>
+
+        {/* MINI FEED */}
+        <div className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] tracking-widest text-white/55">LAST EVENTS</div>
+            <div className="text-[10px] tracking-widest text-white/35">{strategyEvents.length}</div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {(strategyEvents.slice(0, 4) ?? []).map(e => (
+              <div key={e.id} className="rounded-2xl border border-white/10 bg-black/35 px-3 py-2">
+                <div className="text-[11px] text-white/80">{e.label}</div>
+                <div className="mt-1 text-[10px] text-white/35">{new Date(e.time).toLocaleTimeString()}</div>
+              </div>
+            ))}
+            {!strategyEvents.length ? (
+              <div className="text-[11px] text-white/45">No events yet.</div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom tabs in lite too */}
+      {isMobile ? <MobileTabBar tab={tab} onTab={goTab} /> : null}
     </main>
   )
 }
@@ -1947,515 +2527,851 @@ return (
 
     <Toast toast={toast} />
 
-    <div className="p-6 space-y-6 pb-28">
-      {/* ================= MAIN PANEL (SIMPLE) ================= */}
-      <section
-        className={["rounded-[28px] border p-5 md:p-6 neon-card", theme.border].join(" ")}
-        style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 70px ${theme.glow}` }}
-      >
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-          {/* LEFT */}
-          <div className="lg:col-span-5 space-y-4">
-            <LogoPlate tier={walletAccount.tier} version={VERSION} />
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 pb-28">
 
-            <div className={fx === "QUICKCOPY" ? "burst-quickcopy rounded-[28px]" : ""}>
-              <QuickCopyTopStrategies
-                borderClass={theme.border}
-                glow={theme.glow}
-                enabled={!allocOpen && !starting}
-                hint="No traders available — connect or create one to execute"
-                onPick={(presetId) => {
-                  unlockAudioOnce()
-                  setFx("QUICKCOPY")
+      {/* ================= TOP MENU (DESKTOP) ================= */}
+      {!isMobile ? (
+        <div className="rounded-2xl border border-white/10 bg-black/35 p-2 flex flex-wrap gap-2">
+          {TABS.map(([tabKey, tabLabel]) => {
+            const active = tab === tabKey
+            return (
+            <button
+            key={tabKey}
+            type="button"
+            onClick={() => goTab(tabKey)}
+            className={[
+            "rounded-xl px-4 py-2 text-[11px] tracking-widest transition",
+            active
+            ? "border border-white/20 bg-white/10 text-white/90"
+            : "border border-white/10 bg-black/40 text-white/60 hover:bg-white/5",
+            ].join(" ")}
+           >
+           {tabLabel}
+           </button>
+        )
+          })}
+        </div>
+      ) : null}
 
-                  const ttsMs =
-                    specialFirstSeenMsRef.current > 0
-                      ? Math.max(0, Date.now() - specialFirstSeenMsRef.current)
-                      : undefined
+      {/* ================= DASHBOARD ================= */}
+      {tab === "dashboard" ? (
+        <section
+          className={["rounded-[28px] border p-5 md:p-6 neon-card", theme.border].join(" ")}
+          style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 70px ${theme.glow}` }}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:gap-6">
+            
 
-                  logQuick({
-                    type: "PRESET_CLICKED",
-                    ts: Date.now(),
-                    presetId,
-                    specialHot,
-                  })
+  {/* LEFT */}
+  <div className="md:col-span-8 space-y-4 md:space-y-6">
+    
+    {/* EQUITY */}
 
-      x9(`Strategy selected → ${presetId.replaceAll("_", " ")}. Choose allocation.`, 0)
-      showToast("Strategy selected", "Choose how much capital to allocate")
-      requestAllocation({ mode: "PRESET", presetId })
-    }}
-onSpecialCta={() => {
-  unlockAudioOnce()
-  setFx("QUICKCOPY")
+{isBullion && realBalanceUsd < MIN_BULLION_DEPOSIT ? (
+  <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-[11px] text-white/75">
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex rounded-full border border-purple-300/20 bg-purple-300/10 px-2 py-[2px] text-[10px] tracking-widest text-purple-100">
+          ACCESS
+        </span>
+        <span className="text-white/85">
+          Deposit <span className="text-white">{`$${MIN_BULLION_DEPOSIT}`}</span> to activate trading
+        </span>
+      </div>
 
-  // ✅ clave: marca actividad para que no dispare “idle pings”
-  markActivity()
-
-  // ✅ 6XS: recompensa inmediata + bloqueo global 5s
-  x9("Recovery window engaged. Quick attempt available — choose allocation.", 1, {
-    muteMs: 5000,
-    force: true,
-  })
-
-  showToast("Recovery access", "BALANCED is armed — choose allocation")
-
-  const presetId: StartupPresetId = "BALANCED_COPY"
-  const ttsMs =
-    specialFirstSeenMsRef.current > 0 ? Math.max(0, Date.now() - specialFirstSeenMsRef.current) : undefined
-
-  logQuick({
-    type: "PRESET_CLICKED",
-    ts: Date.now(),
-    presetId,
-    specialHot,
-    ttsMs,
-  })
-
-  // ✅ micro-FX chain
-  setFx("QUICKCOPY")
-  setTimeout(() => setFx("TERMINAL"), 180)
-  setTimeout(() => setFx("EQUITY"), 360)
-  setTimeout(() => setFx("APPLY"), 540)
-  setTimeout(() => setFx("NONE"), 980)
-
-  requestAllocation({ mode: "PRESET", presetId })
-}}
-
-    runActive={run.active}
-    runPresetId={run.presetId}
-    runRemainingSec={runRemainingSec}
-    onStop={() => endRun("MANUAL")}
-    starting={starting}
-    specialHot={specialHot}
-    signals={{ drawdownPct: drawdown, lossStreak, equityFlatMs }}
-  />
-</div>
-
-              <ProStrategyFeed
-                tier={walletAccount.tier}
-                borderClass={theme.border}
-                glow={theme.glow}
-                onUpgrade={() => router.push(`/onboarding?target=pro`)}
-                onPickOffer={offer => {
-                  requestAllocation({ mode: "PRESET", presetId: offer.preset })
-                  showToast("DROP SELECTED", "Choose allocation amount")
-                  x9(`Drop selected → ${offer.name}. Choose allocation.`, 0)
-                }}
-              />
-
-              <LastEventsCard items={strategyEvents.slice(0, 6)} />
-              <SocialPulseCard theme={theme} />
-            </div>
-
-            {/* RIGHT */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className={fx === "EQUITY" ? "burst-equity rounded-[28px] overflow-hidden" : ""}>
-              
-     {disableRiskBrake && (
-  <div className="mb-2 rounded-md bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
-    ⚠️ OVERRIDE ON — Protections Desabled
+      <span className="text-white/50">Phantom confirmation → credit</span>
+    </div>
   </div>
-)}
+) : null}
 
 
-<EquityCard
-  equity={engine.equity}
-  initialBalance={baselineUsd ?? realBalanceUsd}  // ✅ nunca allocated
-  lineColor={theme.line}
+  <EquityCard
+  equity={equityBuffer} // o equityDisplay si ese usas para chart
+  initialBalance={baselineUsd ?? realBalanceUsd}
   border={theme.border}
+  lineColor={theme.line} // si theme.line existe; si no, bórralo
   pnl={enginePnl}
   health={healthStatus}
   warningDD={planBTrigger + 2}
   criticalDD={planBTrigger}
-  missionTargetUsd={25}
+  missionTargetUsd={(baselineUsd ?? realBalanceUsd) * 1.1} // meta 10% (cámbialo si quieres)
   showBalanceCore
-  startupEnabled={false}
+  startupEnabled={!run.active}
+  startupHint={run.active ? "RUNNING" : "Pick a preset"}
   balanceTone={balanceTone}
   balanceDeltaUsd={deltaFromBase}
-  onRequestDisableProtections={() => {
-    setDisableRiskBrake(v => !v)
-    engine.actions.setPaused(false)
+  onStartupPreset={(id) => requestAllocation({ mode: "PRESET", presetId: id })}
+  onRequestDisableProtections={() => setDisableRiskBrake(true)}
+/>
+
+<QuickCopyTopStrategies
+  borderClass={theme.border}
+  glow={theme.glow}
+  enabled={!run.active}
+  hint={run.active ? "RUNNING" : undefined}
+  onPick={(id) => requestAllocation({ mode: "PRESET", presetId: id })}
+  onSpecialCta={() => requestAllocation({ mode: "PRESET", presetId: "BALANCED_COPY" })}
+  runActive={run.active}
+  runPresetId={run.presetId}
+  runRemainingSec={runRemainingSec}
+  onStop={() => {
+    // si ya tienes stopRun() úsalo aquí
+    setRun(prev => ({ ...prev, active: false, presetId: null, durationSec: 0 }))
   }}
+  starting={starting}
+  specialHot={false} // ✅ por ahora (hasta que tengas lógica)
+  signals={{ drawdownPct: engineDdPct, lossStreak, equityFlatMs: 0 }} // ✅ sin "signals" externo
 />
 
 
+    {/* 6XS TERMINAL */}
+    <SixXSTerminal
+      items={sixxs}
+      glow={theme.glow}
+      wrapperClassName="rounded-[24px] border border-white/10 bg-black/45 p-4"
+      runActive={run.active}
+      nextDecisionIn={nextDecisionIn}
+      stateLabel={sixxsState}
+    />
+
+    {/* LIVE TRADES */}
+    <div className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] tracking-widest text-white/55">MT5 Stream</div>
+        <div className="text-[10px] tracking-widest text-white/35">
+          open {openTrades.length}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <LiveTradesMT5 trades={openTrades} market={market} />
+      </div>
+    </div>
 
 
-              </div>
-              {/* 6xs ubicacion */}
-              <div className={`transition-all duration-300 ${pulseClass}`}>
-                <SixXSTerminal
-                  items={sixxs}
-                  glow={theme.glow}
-                  runActive={run.active}
-                  nextDecisionIn={nextDecisionIn}
-                  stateLabel={sixxsState}
-                />
-              </div>
+    {/* EVENTS (mini feed) */}
+    <div className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] tracking-widest text-white/55">LAST EVENTS</div>
+        <div className="text-[10px] tracking-widest text-white/35">{strategyEvents.length}</div>
+      </div>
 
-{/* DEPOSIT PANEL */}
-<section className="rounded-[22px] border border-violet-300/15 bg-black/45 p-4 neon-card">
-  {/* HEADER (PHANTOM ONLY) */}
+      <div className="mt-3 space-y-2">
+        {(strategyEvents.slice(0, 6) ?? []).map(e => (
+          <div key={e.id} className="rounded-2xl border border-white/10 bg-black/35 px-3 py-2">
+            <div className="text-[11px] text-white/80">{e.label}</div>
+            <div className="mt-1 text-[10px] text-white/35">
+              {new Date(e.time).toLocaleTimeString()}
+            </div>
+          </div>
+        ))}
+        {!strategyEvents.length ? (
+          <div className="text-[11px] text-white/45">No events yet.</div>
+        ) : null}
+      </div>
+    </div>
+  </div>
+
+  {/* RIGHT */}
+
+  <div className="md:col-span-4 space-y-4 md:space-y-6">
+
+{/* 🔥 LIVE ACTIVITY FEED */}
+
+  <LiveActivityFeed />
+
+
+    {/* PRO DROPS */}
+    <ProStrategyFeed
+      tier={walletAccount.tier}
+      borderClass={theme.border}
+      glow={theme.glow}
+      onPickOffer={offer => requestAllocation({ mode: "PRESET", presetId: offer.preset })}
+      onUpgrade={() => router.push(`/onboarding?target=pro`)}
+    />
+
+    {/* DEPOSIT */}
+    <div className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+      <div className="text-[10px] tracking-widest text-white/55">DEPOSIT</div>
+      <div className="mt-3">
+
+
+{/* ================= PHANTOM DEPOSIT PANEL (WRAPPER UI) ================= */}
+<div className="rounded-[28px] border border-white/10 bg-black/45 p-5 neon-card">
+  {/* HEADER */}
   <div className="flex items-start justify-between gap-3">
     <div className="min-w-0">
-      <div className="flex items-center gap-2">
-        {/* Phantom logo */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* icon */}
+        <div className="flex items-center gap-2">
        
-       
-       <div className="h-8 w-8 rounded-xl border border-violet-300/25 bg-violet-300/10 flex items-center justify-center overflow-hidden shrink-0">
+       <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
   <img
     src="/phantom.svg"
     alt="Phantom"
-    className="h-5 w-5 object-contain opacity-95"
+    className="h-4 w-4 object-contain opacity-95"
     draggable={false}
   />
 </div>
 
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="text-[10px] tracking-widest text-white/55">PHANTOM DEPOSIT</div>
-
-            <div className="rounded-full border border-violet-300/25 bg-violet-300/10 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-violet-100">
-              ONLY
-            </div>
-
-            <div className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-emerald-100">
-              SOLANA
-            </div>
-
-            <div className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-white/60">
-              Mainnet
-            </div>
-          </div>
-
-          <div className="mt-1 text-[12px] text-white/70">
-            Bullions balance:{" "}
-            <span className="text-white/90 font-semibold">{fmtUsd(bullionsBalanceUsd)}</span>
-          </div>
-
-          <div className="mt-1 text-[11px] text-white/55 truncate">
-            Only Phantom is supported. Connect Phantom to credit your internal balance.
-          </div>
+          <div className="text-[10px] tracking-widest text-white/60">PHANTOM DEPOSIT</div>
         </div>
+
+        {/* chips */}
+        <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
+          ONLY
+        </span>
+        <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[10px] tracking-widest text-emerald-100">
+          SOLANA
+        </span>
+        <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
+          Mainnet
+        </span>
+      </div>
+
+      <div className="mt-2 text-[18px] font-semibold text-white/90">
+        Bullions balance: <span className="tabular-nums">{fmtUsd(bullionsBalanceUsd ?? 0)}</span>
+      </div>
+
+      <div className="mt-1 text-[12px] text-white/55">
+        Only Phantom is supported. Connect Phantom to credit your internal balance.
       </div>
     </div>
 
-    {/* Right status pill */}
-    <div
-      className="shrink-0 rounded-2xl border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-[11px] text-violet-100"
-      style={{ boxShadow: `0 0 18px rgba(168,85,247,0.18)` }}
-    >
+    <div className="shrink-0 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[11px] tracking-widest text-white/70">
       phantom
     </div>
   </div>
 
-  {/* BODY */}
-  <div className="mt-3">
-    <PhantomDeposit
-      network="devnet"
-      solUsd={20}
-      onBalanceCredit={(usdAmount, meta) => {
-        setBullionsBalanceUsd(v => v + usdAmount)
-        setBalanceSeedUsd(prev => (prev == null ? metrics.balance + usdAmount : prev))
 
-        showToast("Deposit confirmed", `+${meta.sol} SOL → ${fmtUsd(usdAmount, { sign: true })}`)
-        pushEvent({
-          type: "PROGRESS",
-          label: `Deposit +${meta.sol} SOL (${fmtUsd(usdAmount, { sign: true })}) (tx ${meta.signature.slice(0, 6)}…)`,
-          impact: 1,
-        })
-
-        x9(`Deposit confirmed → ${fmtUsd(usdAmount, { sign: true })} credited`, 1)
-      }}
-    />
+{(bullionsBalanceUsd ?? 0) < 50 ? (
+  <div className="mt-3 rounded-2xl border border-violet-300/25 bg-black/30 px-4 py-3">
+    <div className="text-[12px] text-white/80">
+      <span className="text-violet-200 font-semibold">USE PHANTOM WALLET</span>{" "}
+      <a
+        href="https://phantom.com"
+        target="_blank"
+        rel="noreferrer"
+        className="text-violet-200 underline underline-offset-4 hover:text-violet-100"
+      >
+        to add your first deposit!
+      </a>
+    </div>
   </div>
+) : null}
 
-  {/* FOOTER */}
+
+  {/* BODY (TU COMPONENTE REAL) */}
+<div className="mt-3">
+  <PhantomDeposit
+    network="mainnet-beta"
+    minUsd={50}
+    onBalanceCredit={(usdAmount) => {
+      const credit = Math.max(0, Number(usdAmount) || 0)
+      if (!credit) return
+
+      // 1) balance interno
+      setWalletBalanceUsd(v => v + credit)
+
+      // 2) tx funcional (tu estructura real)
+      pushWalletTx({
+        kind: "DEPOSIT",
+        amountUsd: credit,
+        token: "SOL",
+        status: "CONFIRMED",
+        note: "Deposit credited · Phantom · Solana mainnet",
+      })
+
+      x9(`Deposit credited → +${fmtUsd(credit)}`, 1)
+    }}
+  />
+</div>
+
+
+  {/* FOOTER LINE */}
   <div className="mt-3 text-[10px] text-white/40">
     Credits are internal (casino-style). Confirmed tx → updates dashboard balance.
   </div>
-</section>
-
-<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-  <MiniStat label="uptime" value={fmtTime(uptimeSec)} />
-  <MiniStat label="integrity" value={fmtPct(integrity)} />
-  <MiniStat label="stability" value={fmtPct(stability)} />
 </div>
 
-              {/* ================= EXECUTION TERMINAL ================= */}
-              <section
-                className={[
-                  "space-y-4 rounded-[28px] border border-white/10 p-4 md:p-5 neon-card",
-                  fx === "TERMINAL" ? "burst-terminal" : "",
-                ].join(" ")}
+
+      </div>
+    </div>
+  </div>
+</div>
+        </section>
+      ) : null}
+
+      {/* ================= ADVANCED ================= */}
+      {tab === "advanced" ? (
+        <div className="space-y-10 panel-pop">
+          <section className="rounded-[28px] border border-white/10 bg-black/55 p-5 neon-card">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] tracking-widest text-white/45">ADVANCED MODE</div>
+                <div className="mt-1 text-[13px] text-white/85 font-semibold">
+                  Manual strategy configuration
+                </div>
+                <div className="mt-1 text-[12px] text-white/55">
+                  Assign roles, configure risk, enable Plan B and inspect logs.
+                </div>
+              </div>
+
+              <button
+                onClick={() => router.push(`/onboarding?target=`)}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] tracking-widest text-white/70 hover:bg-white/5"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] tracking-widest text-white/40">EXECUTION TERMINAL</div>
-                    <div className="mt-1 text-[12px] text-white/60">Live orders + MT5 stream</div>
+                UPGRADE
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <MiniStat label="assigned roles" value={String(assignedCount)} />
+              <MiniStat label="pending changes" value={hasPendingChanges ? "yes" : "no"} />
+              <MiniStat label="apply" value={canApply ? "ready" : "locked"} />
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <StrategySlots
+              traders={traders}
+              assignedRoles={assignedRoles}
+              activeRole={activeRole}
+              onSelectRole={(role: Role) => {
+                setActiveRole(role)
+                pushEvent({ type: "SYSTEM", label: `Role selected → ${String(role)}`, impact: 0 })
+                showToast("Role selected", String(role))
+                x9(`Role selected → ${String(role)}`, 0)
+              }}
+              onClearRole={(r: Role) => {
+                clearRole(r)
+                pushEvent({ type: "SYSTEM", label: `Role cleared → ${String(r)}`, impact: 0 })
+                showToast("Cleared role", String(r))
+                x9(`Role cleared → ${String(r)}`, 0)
+              }}
+              getRiskProfile={getRiskProfile}
+              signals={{
+                drawdownPct: engine.metrics.drawdownPct,
+                lossStreak: engine.metrics.lossStreak,
+                equityFlatMs: engine.metrics.equityFlatMs,
+              }}
+            />
+
+            <div className="rounded-2xl border border-white/10 bg-black/35 p-3 text-[10px] text-white/70">
+              <div className="tracking-widest text-white/45">QUICK ANALYTICS (last 6)</div>
+              <div className="mt-2 space-y-1">
+                {quickEvents.slice(-6).map((e, i) => (
+                  <div key={i} className="tabular-nums">
+                    • {e.type}
+                    {"presetId" in e ? ` · ${String((e as any).presetId)}` : ""}
+                    {"ttsMs" in e && (e as any).ttsMs != null
+                      ? ` · tts ${(Number((e as any).ttsMs) / 1000).toFixed(1)}s`
+                      : ""}
                   </div>
+                ))}
+              </div>
+            </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-white/70">
-                    status: <span className="text-white/90 font-semibold">{String(status).toUpperCase()}</span>
-                  </div>
-                </div>
+            <div className="text-[10px] tracking-widest uppercase opacity-60">
+              dd {engine.metrics.drawdownPct}% · streak {engine.metrics.lossStreak} · flat{" "}
+              {(engine.metrics.equityFlatMs / 1000).toFixed(0)}s
+            </div>
 
-                <div className="mt-2 text-[10px] text-white/45">
-                  policy: <span className="text-white/80">{policy.regime}</span> · DD{" "}
-                  <span className="text-white/80 tabular-nums">{drawdown}%</span> · {policy.reasons.join(" • ")}
-                </div>
+            <TraderTree
+              tier={walletAccount.tier}
+              traders={traders}
+              assignedRoles={assignedRoles}
+              activeRole={null}
+              onAssignRole={(role: Role, traderId: number) => {
+                assignRole(role, traderId)
+                const t = traders.find(x => x.id === traderId)
+                pushEvent({
+                  type: "DECISION",
+                  label: `${String(role)} assigned → ${t?.name ?? `#${traderId}`}`,
+                  impact: 1,
+                })
+                showToast("Assigned", `${String(role)} → ${t?.name ?? `#${traderId}`}`)
+                x9(`Assigned ${String(role)} → ${t?.name ?? `#${traderId}`}`, 1)
+              }}
+              onUpgrade={(target?: any) => router.push(`/onboarding?target=${target ?? ""}`)}
+            />
+          </section>
+
+          <section className="space-y-4">
+            <StrategyAssignmentPanel
+              traders={traders}
+              assignedRoles={assignedRoles}
+              activeRole={null}
+              borderClass={theme.border}
+              onSelectRole={() => {}}
+              onClearRole={(r: Role) => {
+                clearRole(r)
+                pushEvent({ type: "SYSTEM", label: `Role cleared → ${String(r)}`, impact: 0 })
+                showToast("Cleared role", String(r))
+                x9(`Role cleared → ${String(r)}`, 0)
+              }}
+              onAssignRole={(role: Role, traderId: number) => {
+                assignRole(role, traderId)
+                const t = traders.find(x => x.id === traderId)
+                pushEvent({
+                  type: "DECISION",
+                  label: `${String(role)} assigned → ${t?.name ?? `#${traderId}`}`,
+                  impact: 1,
+                })
+                showToast("Assigned", `${String(role)} → ${t?.name ?? `#${traderId}`}`)
+                x9(`Assigned ${String(role)} → ${t?.name ?? `#${traderId}`}`, 1)
+              }}
+              planBTraderId={planBTraderId}
+              onSetPlanBTrader={(id: number | null) => {
+                setPlanBTraderId(id)
+                const t = id ? traders.find(x => x.id === id) : null
+                pushEvent({
+                  type: "SYSTEM",
+                  label: id ? `Plan B trader set → ${t?.name ?? `#${id}`}` : "Plan B trader cleared",
+                  impact: 0,
+                })
+                showToast("Plan B updated", id ? `${t?.name ?? `#${id}`}` : "cleared")
+                x9(id ? `Plan B set → ${t?.name ?? `#${id}`}` : "Plan B cleared", 0)
+              }}
+            />
+
+<PlanBConfigPanel
+  enabled={hasAtLeastOneRole}
+  health={healthStatus}
+  trigger={planBTrigger}
+  onChangeTrigger={(v: TriggerOption) => {
+    setPlanBTrigger(v)
+    x9(`Plan B trigger set → ${v}%`, 0)
+  }}
+  backupCount={planBTraderId ? 1 : 0}
+  onEnterAssignMode={() => showToast("Plan B mode", "Pick a trader in PLAN B slot")}
+/>
 
 
-<LiveTradesMT5 trades={trades} market={market} />
+            <StrategyMessages
+              selectedTraders={[]}
+              connectedTraders={connectedTraders}
+              isHighRisk={isHighRisk}
+              isBlocked={isBlocked}
+              aggressiveCount={aggressiveCount}
+            />
 
-              </section>
+            <StrategyTransitionPreview
+              health={healthStatus}
+              currentDrawdown={drawdown}
+              triggerThreshold={planBTrigger}
+              planBTraders={[
+                { id: 301, name: "Atlas", role: "Execution Backup" },
+                { id: 302, name: "Nyx", role: "Risk Support" },
+              ]}
+            />
+          </section>
 
-              {/* ADVANCED TOGGLE */}
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <div className="text-[10px] text-white/40">Advanced controls · manual routing · Plan B · logs</div>
+          <section>
+            <TraderGrid
+              tier={walletAccount.tier}
+              traders={traders}
+              assignedRoles={assignedRoles}
+              activeRole={null}
+              onAssignRole={(role: Role, traderId: number) => {
+                assignRole(role, traderId)
+                const t = traders.find(x => x.id === traderId)
+                pushEvent({
+                  type: "DECISION",
+                  label: `${String(role)} assigned → ${t?.name ?? `#${traderId}`}`,
+                  impact: 1,
+                })
+                showToast("Assigned", `${String(role)} → ${t?.name ?? `#${traderId}`}`)
+                x9(`Assigned ${String(role)} → ${t?.name ?? `#${traderId}`}`, 1)
+              }}
+              getRiskProfile={getRiskProfile}
+            />
+          </section>
 
-                <button
-                  onClick={() => setAdvancedOpen(v => !v)}
-                  className="rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-[11px] tracking-widest text-white/70 hover:bg-white/5"
+          <div className="flex items-center justify-end">
+            {hasPendingChanges ? (
+              <button
+                onClick={() => requestAllocation({ mode: "ADVANCED_APPLY" })}
+                disabled={!canApply}
+                className={[
+                  "px-4 py-2 border rounded-xl hover:bg-white/5 disabled:opacity-40 btn-neon",
+                  "border-white/10",
+                  fx === "APPLY" ? "burst-apply" : "",
+                ].join(" ")}
+                style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.04), 0 0 28px ${theme.glow}` }}
+              >
+                Apply strategy
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* WALLET / SUPPORT aquí si los tienes */}
+    </div>
+
+    <AllocateCapitalModal
+      open={allocOpen}
+      maxUsd={availableUsd}
+      onClose={() => {
+        setAllocOpen(false)
+        setAllocContext(null)
+      }}
+      onConfirm={confirmAllocation}
+    />
+
+    {diplomaOpen && diploma ? (
+      <DiplomaModal
+        theme={theme}
+        data={diploma}
+        onClose={() => setDiplomaOpen(false)}
+        onStop={() => setDiplomaOpen(false)}
+      />
+    ) : null}
+
+    {/* BOTTOM MENU (mobile) */}
+{isMobile ? <MobileTabBar tab={tab} onTab={goTab} /> : null}
+
+
+{/* ================= WALLET ================= */}
+{tab === "wallet" ? (
+  <section
+    className="rounded-[28px] border border-white/10 bg-black/55 p-5 neon-card"
+    style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.05), 0 0 70px ${theme.glow}` }}
+  >
+    {/* HEADER */}
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <div className="text-[10px] tracking-widest text-white/45">WALLET</div>
+        <div className="mt-1 text-[13px] text-white/90 font-semibold">Phantom-style dashboard</div>
+        <div className="mt-1 text-[12px] text-white/55">
+          Visual only (for now). Deposit works via Phantom panel.
+        </div>
+      </div>
+
+      <div className="shrink-0 rounded-2xl border border-white/10 bg-black/40 px-3 py-2">
+        <div className="text-[10px] tracking-widest text-white/45">ACCOUNT</div>
+        <div className="mt-1 text-[11px] text-white/90 font-semibold tabular-nums">
+  {fmtUsd(realBalanceUsd)}
+        </div>
+      </div>
+    </div>
+
+    {/* ===== ROW: LEFT + RIGHT ===== */}
+    <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start">
+      {/* LEFT */}
+      <div className="w-full lg:w-[420px] shrink-0">
+        <div
+          className="relative overflow-hidden rounded-[28px] p-6"
+          onMouseEnter={() => setHoverCard(true)}
+          onMouseLeave={() => setHoverCard(false)}
+          style={{
+            boxShadow:
+              "0 0 0 1px rgba(255,255,255,0.05), 0 0 44px rgba(124,58,237,0.14), 0 0 52px rgba(34,197,94,0.10)",
+            background:
+              "radial-gradient(900px 420px at 18% 0%, rgba(34,197,94,0.16), transparent 55%), radial-gradient(760px 360px at 90% 18%, rgba(124,58,237,0.18), transparent 55%), rgba(0,0,0,0.46)",
+          }}
+        >
+          {/* subtle grid */}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.10]"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)",
+              backgroundSize: "34px 34px",
+            }}
+          />
+
+          {/* top glow line */}
+          <div
+            className="pointer-events-none absolute -top-10 left-0 right-0 h-24 opacity-80"
+            style={{
+              background:
+                "radial-gradient(420px 90px at 25% 60%, rgba(34,197,94,0.28), transparent 60%), radial-gradient(420px 90px at 75% 60%, rgba(124,58,237,0.22), transparent 60%)",
+            }}
+          />
+
+          {/* CARD HEADER */}
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-300/85" />
+                <div className="text-[10px] tracking-widest text-white/65">BULLIONS CARD WALLET</div>
+                <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
+                  SOLANA
+                </span>
+              </div>
+
+              <div className="mt-3 text-[30px] font-semibold tracking-tight text-white/95 tabular-nums">
+                {fmtUsd(cardShownUsd, { decimals: 2 })}
+              </div>
+
+              <div className="mt-1 text-[12px] text-white/60">
+                {hoverCard
+                  ? "Right now: $0 — obtain your card to unlock deposits."
+                  : "Demo balance (visual) — Phantom inspired"}
+              </div>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <div className="text-[12px] font-semibold tracking-widest text-white/85">MASTERCARD</div>
+
+              <div className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-3 py-2">
+                <div
+                  className="h-4 w-6 rounded-md border border-white/10"
                   style={{
-                    boxShadow: advancedOpen
-                      ? `0 0 0 1px rgba(255,255,255,0.12), 0 0 30px ${theme.glow}`
-                      : undefined,
+                    background:
+                      "linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02))",
                   }}
-                >
-                  {advancedOpen ? "HIDE ADVANCED ▾" : "ADVANCED ▸"}
-                </button>
+                />
+                <div className="text-[10px] tracking-widest text-white/55">NFC</div>
               </div>
             </div>
           </div>
-        </section>
 
-        {/* ================= ADVANCED ================= */}
+          {/* NUMBER ROW */}
+          <div className="relative mt-6 flex items-center justify-between gap-3">
+            <div className="text-[12px] text-white/70 tracking-[0.22em] tabular-nums">•••• •••• •••• 4821</div>
+            <div className="text-[12px] text-white/55">01/27</div>
+          </div>
 
-        {advancedOpen ? (
-          <div className="space-y-10 panel-pop">
-            <section className="rounded-[28px] border border-white/10 bg-black/55 p-5 neon-card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-[10px] tracking-widest text-white/45">ADVANCED MODE</div>
-                  <div className="mt-1 text-[13px] text-white/85 font-semibold">Manual strategy configuration</div>
-                  <div className="mt-1 text-[12px] text-white/55">
-                    Assign roles, configure risk, enable Plan B and inspect logs.
-                  </div>
-                </div>
+          {/* CTA overlay on hover */}
+          {hoverCard ? (
+            <div className="relative mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
+              <div className="text-[10px] tracking-widest text-emerald-100/80">OBTAIN YOUR CARD</div>
+              <div className="mt-1 text-[12px] text-white/90 font-semibold">
+                Connect Phantom → deposit → unlock card balance
+              </div>
 
+              <div className="mt-2 flex gap-2">
                 <button
-                  onClick={() => router.push(`/onboarding?target=`)}
-                  className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] tracking-widest text-white/70 hover:bg-white/5"
+                  type="button"
+                  className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-[11px] tracking-widest text-white/85 transition hover:bg-white/5"
                 >
-                  UPGRADE
+                  GET CARD →
+                </button>
+                <button
+                  type="button"
+                  className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-[11px] tracking-widest text-white/70 transition hover:bg-white/5"
+                >
+                  LEARN
                 </button>
               </div>
+            </div>
+          ) : null}
 
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <MiniStat label="assigned roles" value={String(assignedCount)} />
-                <MiniStat label="pending changes" value={hasPendingChanges ? "yes" : "no"} />
-                <MiniStat label="apply" value={canApply ? "ready" : "locked"} />
+          {/* ACTIONS */}
+          <div className="relative mt-4 grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-left transition hover:bg-white/6"
+              onClick={() => {
+                const el = document.getElementById("wallet-deposit")
+                el?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            >
+              <div className="text-[10px] tracking-widest text-white/45">RECEIVE</div>
+              <div className="mt-1 text-[12px] font-semibold text-white/90">Deposit</div>
+              <div className="mt-1 text-[10px] text-white/45">Phantom</div>
+            </button>
+
+            <button
+              type="button"
+              className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-left transition hover:bg-white/6"
+              onClick={() => {
+                const el = document.getElementById("wallet-withdraw")
+                el?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            >
+              <div className="text-[10px] tracking-widest text-white/45">SEND</div>
+              <div className="mt-1 text-[12px] font-semibold text-white/90">Withdraw</div>
+              <div className="mt-1 text-[10px] text-white/45">request</div>
+            </button>
+
+            <button
+              type="button"
+              className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-left transition hover:bg-white/6"
+            >
+              <div className="text-[10px] tracking-widest text-white/45">CARD</div>
+              <div className="mt-1 text-[12px] font-semibold text-white/90">Get card</div>
+              <div className="mt-1 text-[10px] text-white/45">mint</div>
+            </button>
+          </div>
+
+{/* ✅ TRANSACTIONS (FUNCIONAL) */}
+<div className="relative mt-4 rounded-[22px] border border-white/10 bg-black/35 p-4">
+  <div className="flex items-center justify-between">
+    <div className="text-[10px] tracking-widest text-white/55">TRANSACTIONS</div>
+    <div className="text-[10px] tracking-widest text-white/35">{walletTxsSorted.length}</div>
+  </div>
+
+  <div className="mt-3 space-y-2">
+    {walletTxsSorted.slice(0, 6).map(tx => (
+      <div key={tx.id} className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-xl border border-white/10 bg-black/40 flex items-center justify-center text-white/80">
+                {tx.kind === "DEPOSIT" ? "↓" : "↑"}
               </div>
-            </section>
 
-           <section className="space-y-4">
-  <StrategySlots
-    traders={traders}
-    assignedRoles={assignedRoles}
-    activeRole={activeRole}
-    onSelectRole={(role: Role) => {
-      setActiveRole(role)
-      pushEvent({ type: "SYSTEM", label: `Role selected → ${String(role)}`, impact: 0 })
-      showToast("Role selected", String(role))
-      x9(`Role selected → ${String(role)}`, 0)
-    }}
-    onClearRole={(r: Role) => {
-      clearRole(r)
-      pushEvent({ type: "SYSTEM", label: `Role cleared → ${String(r)}`, impact: 0 })
-      showToast("Cleared role", String(r))
-      x9(`Role cleared → ${String(r)}`, 0)
-    }}
-    getRiskProfile={getRiskProfile}
-    signals={{
-      drawdownPct: engine.metrics.drawdownPct,
-      lossStreak: engine.metrics.lossStreak,
-      equityFlatMs: engine.metrics.equityFlatMs,
-    }}
-  />
+              <div className="min-w-0">
+                <div className="text-[11px] text-white/85 font-semibold truncate">
+                  {kindLabel(tx.kind)}
+                </div>
+                <div className="text-[10px] text-white/45 truncate">
+                  {tx.note ?? tx.token}
+                </div>
+              </div>
+            </div>
 
-  <div className="rounded-2xl border border-white/10 bg-black/35 p-3 text-[10px] text-white/70">
-  <div className="tracking-widest text-white/45">QUICK ANALYTICS (last 6)</div>
-  <div className="mt-2 space-y-1">
-    {quickEvents.slice(-6).map((e, i) => (
-      <div key={i} className="tabular-nums">
-        • {e.type}
-        {"presetId" in e ? ` · ${String((e as any).presetId)}` : ""}
-        {"ttsMs" in e && (e as any).ttsMs != null ? ` · tts ${(Number((e as any).ttsMs) / 1000).toFixed(1)}s` : ""}
+            <div className="mt-2 text-[10px] text-white/35">
+              {fmtShortTime(tx.ts)}
+            </div>
+          </div>
+
+          <div className="shrink-0 text-right">
+            <div
+              className={[
+                "inline-flex rounded-xl border px-2.5 py-1 text-[10px] tracking-widest",
+                kindTone(tx.kind),
+              ].join(" ")}
+            >
+              {tx.status ?? "CONFIRMED"}
+            </div>
+
+            <div className="mt-2 text-[12px] font-semibold text-white/90 tabular-nums">
+              {tx.kind === "WITHDRAW" ? "-" : "+"}{fmtUsd(tx.amountUsd)}
+            </div>
+          </div>
+        </div>
       </div>
     ))}
+
+    {!walletTxsSorted.length ? (
+      <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-[11px] text-white/55">
+        No transactions yet.
+      </div>
+    ) : null}
   </div>
 </div>
 
-
-  {/* debug mínimo para validar triggers */}
-  <div className="text-[10px] tracking-widest uppercase opacity-60">
-    dd {engine.metrics.drawdownPct}% · streak {engine.metrics.lossStreak} · flat{" "}
-    {(engine.metrics.equityFlatMs / 1000).toFixed(0)}s
-  </div>
-
-              <TraderTree
-                tier={walletAccount.tier}
-                traders={traders}
-                assignedRoles={assignedRoles}
-                activeRole={null}
-                onAssignRole={(role: Role, traderId: number) => {
-                  assignRole(role, traderId)
-                  const t = traders.find(x => x.id === traderId)
-                  pushEvent({
-                    type: "DECISION",
-                    label: `${String(role)} assigned → ${t?.name ?? `#${traderId}`}`,
-                    impact: 1,
-                  })
-                  showToast("Assigned", `${String(role)} → ${t?.name ?? `#${traderId}`}`)
-                  x9(`Assigned ${String(role)} → ${t?.name ?? `#${traderId}`}`, 1)
-                }}
-                onUpgrade={(target?: any) => router.push(`/onboarding?target=${target ?? ""}`)}
-              />
-            </section>
-
-            <section className="space-y-4">
-              <StrategyAssignmentPanel
-                traders={traders}
-                assignedRoles={assignedRoles}
-                activeRole={null}
-                borderClass={theme.border}
-                onSelectRole={() => {}}
-                onClearRole={(r: Role) => {
-                  clearRole(r)
-                  pushEvent({ type: "SYSTEM", label: `Role cleared → ${String(r)}`, impact: 0 })
-                  showToast("Cleared role", String(r))
-                  x9(`Role cleared → ${String(r)}`, 0)
-                }}
-                onAssignRole={(role: Role, traderId: number) => {
-                  assignRole(role, traderId)
-                  const t = traders.find(x => x.id === traderId)
-                  pushEvent({
-                    type: "DECISION",
-                    label: `${String(role)} assigned → ${t?.name ?? `#${traderId}`}`,
-                    impact: 1,
-                  })
-                  showToast("Assigned", `${String(role)} → ${t?.name ?? `#${traderId}`}`)
-                  x9(`Assigned ${String(role)} → ${t?.name ?? `#${traderId}`}`, 1)
-                }}
-                planBTraderId={planBTraderId}
-                onSetPlanBTrader={(id: number | null) => {
-                  setPlanBTraderId(id)
-                  const t = id ? traders.find(x => x.id === id) : null
-                  pushEvent({
-                    type: "SYSTEM",
-                    label: id ? `Plan B trader set → ${t?.name ?? `#${id}`}` : "Plan B trader cleared",
-                    impact: 0,
-                  })
-                  showToast("Plan B updated", id ? `${t?.name ?? `#${id}`}` : "cleared")
-                  x9(id ? `Plan B set → ${t?.name ?? `#${id}`}` : "Plan B cleared", 0)
-                }}
-              />
-
-              <PlanBConfigPanel
-                enabled={hasAtLeastOneRole}
-                health={healthStatus}
-                trigger={planBTrigger}
-                onChangeTrigger={v => {
-                  setPlanBTrigger(v)
-                  x9(`Plan B trigger set → ${v}%`, 0)
-                }}
-                backupCount={planBTraderId ? 1 : 0}
-                onEnterAssignMode={() => showToast("Plan B mode", "Pick a trader in PLAN B slot")}
-              />
-
-              <StrategyMessages
-                selectedTraders={[]}
-                connectedTraders={connectedTraders}
-                isHighRisk={isHighRisk}
-                isBlocked={isBlocked}
-                aggressiveCount={aggressiveCount}
-              />
-
-              <StrategyTransitionPreview
-                health={healthStatus}
-                currentDrawdown={drawdown}
-                triggerThreshold={planBTrigger}
-                planBTraders={[
-                  { id: 301, name: "Atlas", role: "Execution Backup" },
-                  { id: 302, name: "Nyx", role: "Risk Support" },
-                ]}
-              />
-            </section>
-
-            <section>
-              <TraderGrid
-                tier={walletAccount.tier}
-                traders={traders}
-                assignedRoles={assignedRoles}
-                activeRole={null}
-                onAssignRole={(role: Role, traderId: number) => {
-                  assignRole(role, traderId)
-                  const t = traders.find(x => x.id === traderId)
-                  pushEvent({
-                    type: "DECISION",
-                    label: `${String(role)} assigned → ${t?.name ?? `#${traderId}`}`,
-                    impact: 1,
-                  })
-                  showToast("Assigned", `${String(role)} → ${t?.name ?? `#${traderId}`}`)
-                  x9(`Assigned ${String(role)} → ${t?.name ?? `#${traderId}`}`, 1)
-                }}
-                getRiskProfile={getRiskProfile}
-              />
-            </section>
-
-            <div className="flex items-center justify-end">
-              {hasPendingChanges ? (
-                <button
-                  onClick={() => requestAllocation({ mode: "ADVANCED_APPLY" })}
-                  disabled={!canApply}
-                  className={[
-                    "px-4 py-2 border rounded-xl hover:bg-white/5 disabled:opacity-40 btn-neon",
-                    "border-white/10",
-                    fx === "APPLY" ? "burst-apply" : "",
-                  ].join(" ")}
-                  style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.04), 0 0 28px ${theme.glow}` }}
-                >
-                  Apply strategy
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        </div>
       </div>
 
-      <AllocateCapitalModal
-        open={allocOpen}
-        maxUsd={availableUsd}
-        onClose={() => {
-          setAllocOpen(false)
-          setAllocContext(null)
-        }}
-        onConfirm={confirmAllocation}
-      />
+      {/* RIGHT */}
+      <div className="w-full lg:flex-1 min-w-0 space-y-4">
+        {/* DEPOSIT (real) */}
+        <div id="wallet-deposit" className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] tracking-widest text-white/55">DEPOSIT</div>
+            <div className="text-[10px] tracking-widest text-white/35">Phantom</div>
+          </div>
 
-      {/* DIPLOMA MODAL */}
-      {diplomaOpen && diploma ? (
-        <DiplomaModal
-          theme={theme}
-          data={diploma}
-          onClose={() => setDiplomaOpen(false)}
-          onStop={() => setDiplomaOpen(false)}
-        />
-      ) : null}
-    </main>
-  )
-}
+          <div className="mt-3">
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
+                  <img src="/phantom.svg" alt="Phantom" className="h-4 w-4 object-contain opacity-95" draggable={false} />
+                </div>
+                <div className="text-[10px] tracking-widest text-white/60">PHANTOM DEPOSIT</div>
+              </div>
+
+              <div className="mt-3">
+                <PhantomDeposit
+                  network="mainnet-beta"
+                  minUsd={depositMinUsd}
+                  onBalanceCredit={(usdAmount) => {
+                    const credit = Math.max(0, Number(usdAmount) || 0)
+                    setWalletBalanceUsd(v => v + credit)
+                    x9(`Deposit credited → +${fmtUsd(credit)}`, 1)
+
+                    // ✅ tx funcional
+                    pushWalletTx({
+  kind: "DEPOSIT",
+  amountUsd: credit,
+  token: "SOL",
+  status: "CONFIRMED",
+  note: "Deposit credited · Phantom · Solana mainnet",
+})
+
+                  }}
+
+                />
+              </div>
+
+              <div className="mt-2 text-[10px] text-white/40">
+                Confirmed tx → credits internal balance.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* WITHDRAW (visual, tx funcional PENDING) */}
+        <div id="wallet-withdraw" className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] tracking-widest text-white/55">WITHDRAW</div>
+            <div className="text-[10px] tracking-widest text-white/35">Visual</div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
+                <span className="text-[12px] text-white/80">↑</span>
+              </div>
+              <div>
+                <div className="text-[10px] tracking-widest text-white/60">WITHDRAW REQUEST</div>
+                <div className="text-[11px] text-white/45">Send USD credit to your wallet (soon)</div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-12 gap-2">
+              <div className="col-span-7">
+                <div className="text-[10px] tracking-widest text-white/45">AMOUNT (USD)</div>
+                <div className="mt-1 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[12px] text-white/70 tabular-nums">
+                  $50.00
+                </div>
+              </div>
+
+              <div className="col-span-5">
+                <div className="text-[10px] tracking-widest text-white/45">STATUS</div>
+                <div className="mt-1 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-[11px] tracking-widest text-amber-100">
+                  PENDING
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[11px] font-semibold tracking-widest text-white/70 hover:bg-white/10"
+              onClick={() => {
+                const amt = 50
+                x9(`Withdraw requested → -${fmtUsd(amt)}`, 1)
+                pushWalletTx({
+                  kind: "WITHDRAW",
+                  amountUsd: amt,
+                  token: "USDC",
+                  status: "PENDING",
+                  note: "Withdraw request · Processing (visual)",
+                })
+              }}
+            >
+              REQUEST WITHDRAW →
+            </button>
+
+            <div className="mt-2 text-[10px] text-white/40">
+              Visual only — withdrawals will be enabled later.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+) : null}
+
+
+  </main>
+)
 
 /* ================= TOAST ================= */
 
@@ -2470,6 +3386,7 @@ function Toast({ toast }: { toast: { title: string; sub?: string } | null }) {
     </div>
   )
 }
+
 
 /* ================= UI BLOCKS ================= */
 
@@ -2699,8 +3616,8 @@ function DiplomaModal({
     window.location.href = "/dashboard?advanced=1"
   }
 
-  return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center p-3 md:p-6">
+return (
+  <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80" onClick={onClose} />
 
       <div
@@ -2923,6 +3840,26 @@ function RowK({ label, value }: { label: string; value: string }) {
   )
 }
 
+function demoWithdraw() {
+  // retiro visual, pero lo guardamos como "real event" dentro de tu app
+  const amt = 50 // cámbialo o luego lo haces input
+
+  setWalletTxs(prev => [
+    {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      kind: "WITHDRAW",
+      amountUsd: amt,
+      token: "USDC",
+      ts: Date.now(),
+      status: "PENDING",
+      note: "Withdraw request (visual)",
+    },
+    ...prev,
+  ])
+
+  x9(`Withdraw requested → -${fmtUsd(amt)}`, -1)
+}
+
 
 function AllocateCapitalModal({
   open,
@@ -2940,9 +3877,16 @@ function AllocateCapitalModal({
   if (!open) return null
 
   const n = Number(raw)
-  const amount = Number.isFinite(n) ? Math.max(0, Math.min(maxUsd, n)) : 0
+  
+  const MIN_DEPOSIT_USD = 50
+
+const amount = Number.isFinite(n) ? Math.max(0, Math.min(maxUsd, n)) : 0
+const belowMin = amount > 0 && amount < MIN_DEPOSIT_USD
+const canConfirm = amount >= MIN_DEPOSIT_USD && amount <= maxUsd
+
 
   return (
+
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80" onClick={onClose} />
 
@@ -2951,16 +3895,25 @@ function AllocateCapitalModal({
           <div>
             <div className="text-[14px] text-white/90 font-semibold">¿Cuánto de tu saldo quieres meter?</div>
             <div className="mt-1 text-[12px] text-white/60">
-              Máximo disponible: <span className="text-white/85 font-semibold">{fmtUsd(maxUsd)}</span>
+              Mínimo: <span className="text-white/85 font-semibold">$50.00</span> · Máximo disponible:{" "}
+               <span className="text-white/85 font-semibold">{fmtUsd(maxUsd)}</span>
             </div>
           </div>
 
           <button
-            onClick={onClose}
-            className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-white/70 hover:bg-white/5"
-          >
-            Cerrar
-          </button>
+  disabled={!canConfirm}
+  onClick={() => onConfirm(amount)}
+  className="rounded-xl border border-emerald-300/25 bg-emerald-300/15 px-4 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-300/20 disabled:opacity-40"
+>
+  Confirm
+</button>
+
+{belowMin ? (
+  <div className="mt-2 text-[11px] text-rose-200/90">
+    Minimum Deposit: $50.00
+  </div>
+) : null}
+
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
@@ -3016,8 +3969,10 @@ function AllocateCapitalModal({
           >
             Confirmar
           </button>
+          
         </div>
       </div>
     </div>
   )
+}
 }
