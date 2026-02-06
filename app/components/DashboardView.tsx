@@ -1189,10 +1189,64 @@ const TABS: ReadonlyArray<readonly [TabKey, string]> = [
 ] as const
 
 
+// ================= PRESET DROPS (ROTATING) =================
+
+const DROPS = [
+  { id: "safe", title: "OBSIDIAN EDGE", sub: "low variance · tight DD guard", tag: "SAFE" },
+  { id: "balanced", title: "NEON HYDRA", sub: "adaptive recovery · mid tempo", tag: "BAL" },
+  { id: "aggro", title: "HELLION RUSH", sub: "higher volatility · faster flips", tag: "AGGRO" },
+  { id: "safe2", title: "TORION COIL", sub: "patient entries · defense first", tag: "SAFE" },
+  { id: "bal2", title: "QUANTUM DRIFT", sub: "smooth curve · controlled risk", tag: "BAL" },
+  { id: "agg2", title: "VORTEX SNAP", sub: "momentum bias · sharp exits", tag: "AGGRO" },
+]
+
+function shuffle<T>(a: T[]) {
+  const x = [...a]
+  for (let i = x.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[x[i], x[j]] = [x[j], x[i]]
+  }
+  return x
+}
+
 export default function DashboardView({ account: walletAccount }: { account: Account }) {
   const router = useRouter()
 
-  
+  const [drops, setDrops] = useState(() => shuffle(DROPS).slice(0, 3))
+
+    useEffect(() => {
+    const t = setInterval(() => {
+      setDrops(shuffle(DROPS).slice(0, 3))
+    }, 4200)
+    return () => clearInterval(t)
+  }, [])
+
+  // ✅ STATE SIEMPRE ADENTRO DEL COMPONENTE
+  const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
+
+  async function refreshBalance(wallet: string) {
+    try {
+      const r = await fetch(
+        `/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`,
+        { cache: "no-store" }
+      )
+      const j = await r.json()
+      if (j?.ok) setRealBalanceUsd(Number(j.balanceUsd || 0))
+    } catch (e) {
+      console.error("refreshBalance failed", e)
+    }
+  }
+
+  useEffect(() => {
+    const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+    if (!wallet) return
+    refreshBalance(wallet)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+  console.log("[BALANCE] realBalanceUsd =", realBalanceUsd)
+}, [realBalanceUsd])
 
 const [tab, setTab] = useState<TabKey>("dashboard")
 
@@ -1326,27 +1380,7 @@ const depositMinUsd = isTorion ? 0 : 50
 }
 
 
-// ================= PRESET DROPS (ROTATING) =================
 
-const DROPS = [
-  { id: "safe", title: "OBSIDIAN EDGE", sub: "low variance · tight DD guard", tag: "SAFE" },
-  { id: "balanced", title: "NEON HYDRA", sub: "adaptive recovery · mid tempo", tag: "BAL" },
-  { id: "aggro", title: "HELLION RUSH", sub: "higher volatility · faster flips", tag: "AGGRO" },
-  { id: "safe2", title: "TORION COIL", sub: "patient entries · defense first", tag: "SAFE" },
-  { id: "bal2", title: "QUANTUM DRIFT", sub: "smooth curve · controlled risk", tag: "BAL" },
-  { id: "agg2", title: "VORTEX SNAP", sub: "momentum bias · sharp exits", tag: "AGGRO" },
-]
-
-function shuffle<T>(a: T[]) {
-  const x = [...a]
-  for (let i = x.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[x[i], x[j]] = [x[j], x[i]]
-  }
-  return x
-}
-
-const [drops, setDrops] = useState(() => shuffle(DROPS).slice(0, 3))
 
 useEffect(() => {
   const t = setInterval(() => {
@@ -1673,12 +1707,27 @@ const base =
   (walletAccount as any)?.name,
 ])
 
-const realBalanceUsd = walletBalanceUsd
 const canTrade = !isBullion || realBalanceUsd >= MIN_BULLION_DEPOSIT
 
 
+
 /* ===== AVAILABLE FOR ALLOCATION (NO DEPENDE DEL ENGINE) ===== */
-const availableUsd = run.active ? Math.max(0, realBalanceUsd - allocatedUsd) : realBalanceUsd
+const availableUsd = useMemo(() => {
+  const raw = run.active
+    ? realBalanceUsd - allocatedUsd
+    : realBalanceUsd
+
+  return Math.max(0, Number.isFinite(raw) ? raw : 0)
+}, [run.active, realBalanceUsd, allocatedUsd])
+
+useEffect(() => {
+  console.log("[ALLOC DEBUG]", {
+    runActive: run.active,
+    realBalanceUsd,
+    allocatedUsd,
+    availableUsd,
+  })
+}, [run.active, realBalanceUsd, allocatedUsd, availableUsd])
 
 /* ================= ENGINE ACCOUNT (SEPARADO DEL WALLET) ================= */
 // ✅ El engine usa allocatedUsd SOLO cuando está corriendo.
@@ -2788,6 +2837,7 @@ return (
 </div>
 
 
+
   {/* FOOTER LINE */}
   <div className="mt-3 text-[10px] text-white/40">
     Credits are internal (casino-style). Confirmed tx → updates dashboard balance.
@@ -2801,6 +2851,7 @@ return (
 </div>
         </section>
       ) : null}
+
 
       {/* ================= ADVANCED ================= */}
       {tab === "advanced" ? (
@@ -3034,6 +3085,7 @@ return (
 
 
 {/* ================= WALLET ================= */}
+
 {tab === "wallet" ? (
   <section
     className="rounded-[28px] border border-white/10 bg-black/55 p-5 neon-card"
@@ -3128,6 +3180,7 @@ return (
               </div>
             </div>
           </div>
+
 
           {/* NUMBER ROW */}
           <div className="relative mt-6 flex items-center justify-between gap-3">
