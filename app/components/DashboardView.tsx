@@ -2088,6 +2088,8 @@ function requestAllocation(ctx: NonNullable<typeof allocContext>) {
   setAllocOpen(true)
 }
 function confirmAllocation(amount: number) {
+  console.log("[CONFIRM ALLOC] start", { amount, availableUsd, allocContext })
+
   const safeAvailable = Number.isFinite(availableUsd) ? availableUsd : 0
   if (safeAvailable <= 0) {
     showToast("No funds available", "Your available balance is $0.00")
@@ -2096,6 +2098,7 @@ function confirmAllocation(amount: number) {
   }
 
   if (!allocContext) {
+    showToast("Error", "No allocation context")
     setAllocOpen(false)
     setStarting(false)
     return
@@ -2104,49 +2107,35 @@ function confirmAllocation(amount: number) {
   const amt = Number(amount)
   const safeAmount = clamp(Number.isFinite(amt) ? amt : 0, 0, safeAvailable)
 
-  // ✅ capture context once, then clear
   const ctx = allocContext
   setAllocContext(null)
-
-  // ✅ close modal
   setAllocOpen(false)
 
-  // ✅ allocate to engine (ONE TIME)
+  // ✅ 1) bloquear capital
   setAllocatedUsd(safeAmount)
 
-  // ✅ apply strategy/preset FIRST (so it doesn't get blocked by run.active)
+  console.log("[CONFIRM ALLOC] locked", { safeAmount })
+
+  // ✅ 2) arrancar preset / run
   if (ctx.mode === "PRESET") {
-    // no timeout needed, but keeping a tiny delay avoids racey UI logs
-    setTimeout(() => applyStartupPreset(ctx.presetId, safeAmount), 0)
+    // IMPORTANTE: applyStartupPreset DEBE prender run.active adentro
+    applyStartupPreset(ctx.presetId, safeAmount)
   } else {
-    setTimeout(() => applyStrategy(), 0)
+    applyStrategy()
+    setRun({
+      active: true,
+      presetId: null,
+      durationSec: 3 * 24 * 60 * 60,
+      startedAtMs: Date.now(),
+      startPnl: 0,
+      startBalance: toNum(realBalanceUsd),
+    })
   }
 
-  // ✅ start run AFTER applying strategy/preset
-  setRun({
-    active: true,
-    presetId: ctx.mode === "PRESET" ? ctx.presetId : null,
-    durationSec:
-      ctx.mode === "PRESET"
-        ? (ctx.presetId === "SAFE_COPY"
-            ? 24 * 60 * 60
-            : ctx.presetId === "BALANCED_COPY"
-              ? 3 * 24 * 60 * 60
-              : 7 * 24 * 60 * 60)
-        : 3 * 24 * 60 * 60,
-    startedAtMs: Date.now(),
-    startPnl: 0,
-
-    // 🔥 snapshot REAL (no allocated)
-    startBalance: toNum(realBalanceUsd),
-  })
-
-  // ✅ UI feedback
   setStarting(false)
   showToast("RUN LIVE", `Allocated ${fmtUsd(safeAmount)}`)
-  x9(`Run started · allocated ${fmtUsd(safeAmount)} · engine armed`, 1)
+  x9(`Allocated ${fmtUsd(safeAmount)} → applying routing…`, 1)
 }
-
 
   /* ===== UPTIME + SOFT PROGRESS ===== */
   useEffect(() => {
@@ -2301,7 +2290,7 @@ const durationSec = Math.min(MAX_DAYS, days) * 24 * 60 * 60
       durationSec,
       startedAtMs: Date.now(),
       startPnl: metrics?.pnl ?? 0,
-      startBalance: realBalanceUsd,    })
+      startBalance: allocationUsd,    })
 
     x9("Window armed. Monitoring drawdown + stability.", 1)
 
@@ -2376,11 +2365,11 @@ setTimeout(() => {
 
   x9("Routing applied. Scanning for first entry…", 0)
 
-  // tu checker de “no entry yet”
   setTimeout(() => {
     const hasOpen = (engine?.trades ?? []).some(t => t.status === "open")
     const last = equityBuffer?.[equityBuffer.length - 1] ?? metrics?.balance ?? 0
-    const start = run.startBalance || last
+
+    const start = allocationUsd || last // ✅ NO uses run.startBalance aquí
 
     if (!hasOpen && Math.abs(last - start) < 0.01) {
       x9("Armed. Waiting for first signal… (no entry yet)", 0)
@@ -2389,7 +2378,7 @@ setTimeout(() => {
       setTimeout(() => setFx("NONE"), 600)
     }
   }, 1200)
-}, 120) // 👈 clave: NO 0, ponle 120ms
+}, 120)
 
     setIntegrity(v => clamp(v + 1.2, 70, 99))
     setStability(v => clamp(v + 1.6, 60, 98))
