@@ -1224,6 +1224,8 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
   // ✅ STATE SIEMPRE ADENTRO DEL COMPONENTE
   const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
 
+  
+
   async function refreshBalance(wallet: string) {
     try {
       const r = await fetch(
@@ -1437,8 +1439,7 @@ const cardShownUsd = hoverCard ? 0 : animUsd
 
 const isBullion = walletAccount.tier === "BULLION"
 
-// saldo interno (Phantom → crédito interno)
-const [bullionsBalanceUsd, setBullionsBalanceUsd] = useState<number>(0)
+
 
 type WalletTxKind = "DEPOSIT" | "WITHDRAW"
 type WalletTx = {
@@ -1657,17 +1658,14 @@ const base =
   isBullion ? 0 :
   (accountBase > 0 ? accountBase : tierSeed)
 
-  const bullion = Number(bullionsBalanceUsd ?? 0)
-
-  const total = Math.max(0, base + bullion)
 
 }, [
   walletAccount?.tier,
   walletAccount?.baseBalance,
-  bullionsBalanceUsd,
   isBullion,
   (walletAccount as any)?.handle,
   (walletAccount as any)?.name,
+  realBalanceUsd,
 ])
 
 const canTrade = !isBullion || realBalanceUsd >= MIN_BULLION_DEPOSIT
@@ -2208,11 +2206,11 @@ function confirmAllocation(amount: number) {
   function endRun(endedBy: "AUTO" | "MANUAL") {
     if (!run.active || !run.presetId || !metrics) return
 
-    const endBalance = (equityBuffer?.[equityBuffer.length - 1] ?? metrics.balance) + bullionsBalanceUsd
-    const endPnl = metrics.pnl
+    const endPnl = Number.isFinite(metrics?.pnl) ? Number(metrics.pnl) : 0
     const pnlDelta = endPnl - run.startPnl
     const elapsedSec = Math.min(run.durationSec, Math.floor((Date.now() - run.startedAtMs) / 1000))
     const progressPct = run.durationSec > 0 ? Math.min(100, Math.round((elapsedSec / run.durationSec) * 100)) : 0
+    const endBalance = (Number.isFinite(realBalanceUsd) ? realBalanceUsd : 0) + endPnl
 
     setRun({
       active: false,
@@ -2224,17 +2222,18 @@ function confirmAllocation(amount: number) {
     })
 
     setDiploma({
-      presetId: run.presetId,
-      endedBy,
-      durationSec: run.durationSec,
-      elapsedSec,
-      progressPct,
-      startBalance: run.startBalance,
-      endBalance,
-      pnlDelta,
-      background: " ",
-      issuedAt: Date.now(),
-    })
+  presetId: run.presetId,
+  endedBy,
+  durationSec: run.durationSec,
+  elapsedSec,
+  progressPct: progressPct,
+  startBalance: run.startBalance,
+  endBalance: endBalance,
+  pnlDelta: pnlDelta,
+  background: " ",
+  issuedAt: Date.now(),
+})
+
 
     setDiplomaOpen(true)
 
@@ -2266,9 +2265,8 @@ function confirmAllocation(amount: number) {
 
     x9(`Loading ${id.replaceAll("_", " ")}. Routing execution modules…`, 1)
 
-const hardMax =
-  toNum(equityBuffer?.[equityBuffer.length - 1] ?? metrics?.balance ?? 0) + toNum(bullionsBalanceUsd)
-
+// ✅ hard cap simple: no permitas lock mayor al balance real disponible
+const hardMax = Math.max(0, Number.isFinite(realBalanceUsd) ? realBalanceUsd : 0)
 const locked = clamp(allocationUsd, 0, hardMax)
 
 setAllocatedUsd(locked)
@@ -2303,8 +2301,7 @@ const durationSec = Math.min(MAX_DAYS, days) * 24 * 60 * 60
       durationSec,
       startedAtMs: Date.now(),
       startPnl: metrics?.pnl ?? 0,
-      startBalance: (equityBuffer?.[equityBuffer.length - 1] ?? metrics?.balance ?? 0) + bullionsBalanceUsd,
-    })
+      startBalance: realBalanceUsd,    })
 
     x9("Window armed. Monitoring drawdown + stability.", 1)
 
@@ -2742,8 +2739,7 @@ return (
       </div>
 
       <div className="mt-2 text-[18px] font-semibold text-white/90">
-        Bullions balance: <span className="tabular-nums">{fmtUsd(bullionsBalanceUsd ?? 0)}</span>
-      </div>
+      Balance: <span className="tabular-nums">{fmtUsd(realBalanceUsd)}</span>      </div>
 
       <div className="mt-1 text-[12px] text-white/55">
         Only Phantom is supported. Connect Phantom to credit your internal balance.
@@ -2756,8 +2752,8 @@ return (
   </div>
 
 
-{(bullionsBalanceUsd ?? 0) < 50 ? (
-  <div className="mt-3 rounded-2xl border border-violet-300/25 bg-black/30 px-4 py-3">
+{isBullion && realBalanceUsd < 50 ? (
+    <div className="mt-3 rounded-2xl border border-violet-300/25 bg-black/30 px-4 py-3">
     <div className="text-[12px] text-white/80">
       <span className="text-violet-200 font-semibold">USE PHANTOM WALLET</span>{" "}
       <a
