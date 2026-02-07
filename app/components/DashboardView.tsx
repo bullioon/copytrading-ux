@@ -1244,6 +1244,10 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+
+const walletBalanceUsd = realBalanceUsd
+
+
   useEffect(() => {
   console.log("[BALANCE] realBalanceUsd =", realBalanceUsd)
 }, [realBalanceUsd])
@@ -1448,47 +1452,7 @@ type WalletTx = {
 }
 
 
-// saldo total visible (base + interno)
-const [walletBalanceUsd, setWalletBalanceUsd] = useState<number>(0)
-useEffect(() => {
-  const tierU = String(walletAccount?.tier ?? "").toUpperCase()
 
-  // ✅ seeds por tier (lo que tú pediste)
-  const tierSeed =
-    tierU === "HELLION" ? 1500 :
-    tierU === "TORION" ? 3000 :
-    0
-
-  // ✅ DEMON seed: solo testing
-  const isDemon =
-    tierU === "DEMON" ||
-    String((walletAccount as any)?.handle ?? "").toLowerCase() === "demon" ||
-    String((walletAccount as any)?.name ?? "").toLowerCase() === "demon"
-  const demonSeedUsd = 50
-
-  const rawBase = Number(walletAccount?.baseBalance)
-  const accountBase = Number.isFinite(rawBase) ? rawBase : 0
-
-  // ✅ prioridad:
-  // - BULLION: 0
-  // - DEMON: 50
-  // - HELLION/TORION: seed si accountBase viene 0
-  // - si accountBase > 0: respeta accountBase
-  const baseBalance =
-    isBullion ? 0 :
-    isDemon ? demonSeedUsd :
-    (accountBase > 0 ? accountBase : tierSeed)
-
-  const internal = Number(bullionsBalanceUsd ?? 0)
-  setWalletBalanceUsd(Math.max(0, baseBalance + internal))
-}, [
-  walletAccount?.tier,
-  walletAccount?.baseBalance,
-  (walletAccount as any)?.handle,
-  (walletAccount as any)?.name,
-  bullionsBalanceUsd,
-  isBullion,
-])
 
   /* ===== FX + METRICS ===== */
   const [fx, setFx] = useState<FxBurst>("NONE")
@@ -1697,7 +1661,6 @@ const base =
 
   const total = Math.max(0, base + bullion)
 
-  setWalletBalanceUsd(total)
 }, [
   walletAccount?.tier,
   walletAccount?.baseBalance,
@@ -2811,32 +2774,34 @@ return (
 
 
   {/* BODY (TU COMPONENTE REAL) */}
+
 <div className="mt-3">
   <PhantomDeposit
     network="mainnet-beta"
-    minUsd={50}
+    minUsd={depositMinUsd}
     onBalanceCredit={(usdAmount) => {
       const credit = Math.max(0, Number(usdAmount) || 0)
-      if (!credit) return
 
-      // 1) balance interno
-      setWalletBalanceUsd(v => v + credit)
+      // ✅ refresca del backend (Firestore) para que sea “real”
+      const wallet = window.solana?.publicKey?.toBase58?.()
+      if (wallet) refreshBalance(wallet)
 
-      // 2) tx funcional (tu estructura real)
-      pushWalletTx({
-        kind: "DEPOSIT",
-        amountUsd: credit,
-        token: "SOL",
-        status: "CONFIRMED",
-        note: "Deposit credited · Phantom · Solana mainnet",
-      })
+      // ✅ log UI (opcional)
+      x9("Deposit confirmed ✓", 1)
 
-      x9(`Deposit credited → +${fmtUsd(credit)}`, 1)
+      // ✅ si quieres historial en UI, aquí SÍ va pushWalletTx
+      if (credit > 0) {
+        pushWalletTx({
+          kind: "DEPOSIT",
+          amountUsd: credit,
+          token: "SOL",
+          status: "CONFIRMED",
+          note: "Deposit credited · Phantom · Solana mainnet",
+        })
+      }
     }}
   />
 </div>
-
-
 
   {/* FOOTER LINE */}
   <div className="mt-3 text-[10px] text-white/40">
@@ -3332,25 +3297,28 @@ return (
 
               <div className="mt-3">
                 <PhantomDeposit
-                  network="mainnet-beta"
-                  minUsd={depositMinUsd}
-                  onBalanceCredit={(usdAmount) => {
-                    const credit = Math.max(0, Number(usdAmount) || 0)
-                    setWalletBalanceUsd(v => v + credit)
-                    x9(`Deposit credited → +${fmtUsd(credit)}`, 1)
+  network="mainnet-beta"
+  minUsd={depositMinUsd}
+  onBalanceCredit={(usdAmount) => {
+    const credit = Math.max(0, Number(usdAmount) || 0)
 
-                    // ✅ tx funcional
-                    pushWalletTx({
-  kind: "DEPOSIT",
-  amountUsd: credit,
-  token: "SOL",
-  status: "CONFIRMED",
-  note: "Deposit credited · Phantom · Solana mainnet",
-})
+    const wallet = window.solana?.publicKey?.toBase58?.()
+    if (wallet) refreshBalance(wallet)
 
-                  }}
+    x9("Deposit confirmed ✓", 1)
 
-                />
+    if (credit > 0) {
+      pushWalletTx({
+        kind: "DEPOSIT",
+        amountUsd: credit,
+        token: "SOL",
+        status: "CONFIRMED",
+        note: "Deposit credited · Phantom · Solana mainnet",
+      })
+    }
+  }}
+/>
+
               </div>
 
               <div className="mt-2 text-[10px] text-white/40">
