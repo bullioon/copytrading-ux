@@ -33,6 +33,8 @@ import { useSixXSFeedback } from "../hooks/useSixXSFeedback"
 import PhantomDeposit from "@/app/components/PhantomDeposit"
 import type { TriggerOption } from "./PlanBConfigPanel"
 
+import { AllocateCapitalModal } from "@/app/components/AllocateCapitalModal"
+
 
 /* ================= TYPES ================= */
 
@@ -930,16 +932,16 @@ const renderPresetButton = (id: StartupPresetId) => {
   const recommended = id === "BALANCED_COPY"
 
   const w = win?.[id]
-const now = Date.now()
-const elapsedSec = w ? Math.max(0, Math.floor((now - w.startAt) / 1000)) : 0
-const remainingSec = w ? Math.max(0, w.durSec - elapsedSec) : 0
-const windowPct = w && w.durSec > 0 ? Math.min(100, Math.max(0, (elapsedSec / w.durSec) * 100)) : 0
-const windowLeft = w ? fmtDuration(remainingSec) : "—"
+  const now = Date.now()
+  const elapsedSec = w ? Math.max(0, Math.floor((now - w.startAt) / 1000)) : 0
+  const remainingSec = w ? Math.max(0, w.durSec - elapsedSec) : 0
+  const windowPct =
+    w && w.durSec > 0 ? Math.min(100, Math.max(0, (elapsedSec / w.durSec) * 100)) : 0
+  const windowLeft = w ? fmtDuration(remainingSec) : "—"
 
 
   return (
     <button
-      key={id}
       disabled={!enabled}
       onClick={() => enabled && onPick(id)}
       className={[
@@ -968,38 +970,35 @@ const windowLeft = w ? fmtDuration(remainingSec) : "—"
           ) : null}
         </div>
       </div>
-
       <div className="mt-2 text-[10px] text-white/55 leading-snug">
         <span className="text-white/75 font-semibold">{info.dd}</span> · {info.pace}
         <br />
         <span className="text-white/70">{info.bestFor}</span>
 
         {/* WINDOW BAR */}
-<div className="mt-3">
-  <div className="flex items-center justify-between text-[10px] tracking-widest text-white/55">
-    <span className="inline-flex items-center gap-2">
-      <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
-      DROP WINDOW
-    </span>
-    <span className="text-white/70">{windowLeft}</span>
-  </div>
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-[10px] tracking-widest text-white/55">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
+              DROP WINDOW
+            </span>
+            <span className="text-white/70">{windowLeft}</span>
+          </div>
 
-  <div className="mt-2 h-[6px] w-full overflow-hidden rounded-full border border-white/10 bg-black/40">
-    <div
-      className="h-full rounded-full bg-white/25"
-      style={{ width: `${windowPct}%` }}
-    />
-  </div>
+          <div className="mt-2 h-[6px] w-full overflow-hidden rounded-full border border-white/10 bg-black/40">
+            <div className="h-full rounded-full bg-white/25" style={{ width: `${windowPct}%` }} />
+          </div>
 
-  <div className="mt-2 text-[10px] text-white/55">
-    Limited slot window · rotates automatically.
-  </div>
-</div>
-
+          <div className="mt-2 text-[10px] text-white/55">
+            Limited slot window · rotates automatically.
+          </div>
+        </div>
       </div>
+
     </button>
   )
 }
+
   return (
     <section
       className={["rounded-3xl border p-4", borderClass].join(" ")}
@@ -1606,6 +1605,8 @@ const [activeRole, setActiveRole] = useState<Role | null>(null)
   /* ===== EQUITY BUFFER ===== */
   const [equityBuffer, setEquityBuffer] = useState<number[]>([])
 
+  
+
   /* ===== BASELINE (BALANCE INICIAL FIJO) ===== */
   const [baselineUsd, setBaselineUsd] = useState<number | null>(null)
 
@@ -1730,6 +1731,16 @@ console.log("[ALLOC]", {
   realBalanceUsd,
   engineBaseBalance,
 })
+
+useEffect(() => {
+  console.log("[ALLOC STATE UPDATED]", {
+    runActive: run.active,
+    allocatedUsd,
+    realBalanceUsd,
+    engineBaseBalance: run.active ? allocatedUsd : realBalanceUsd,
+  })
+}, [run.active, allocatedUsd, realBalanceUsd])
+
 
 /* ================= ENGINE ================= */
 
@@ -2042,6 +2053,7 @@ const t = setInterval(() => {
   }, [run.active, status, policy])
 
 
+
  /* ================= CAPITAL ALLOCATION (ONE STRATEGY AT A TIME) ================= */
 
 const [allocOpen, setAllocOpen] = useState(false)
@@ -2050,6 +2062,10 @@ const [allocContext, setAllocContext] = useState<
   | { mode: "ADVANCED_APPLY" }
   | null
 >(null)
+
+useEffect(() => {
+  console.log("[ALLOC OPEN CHANGED]", allocOpen)
+}, [allocOpen])
 
 const toNum = (v: unknown) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0
@@ -2060,6 +2076,7 @@ const toNum = (v: unknown) => {
   }
   return 0
 }
+
 
 const lastGoodBalanceRef = useRef<number>(0)
 
@@ -2087,8 +2104,15 @@ function requestAllocation(ctx: NonNullable<typeof allocContext>) {
   setAllocContext(ctx)
   setAllocOpen(true)
 }
+
+
 function confirmAllocation(amount: number) {
-  console.log("[CONFIRM ALLOC] start", { amount, availableUsd, allocContext })
+  console.log("[CONFIRM ALLOC] fired", {
+    amount,
+    availableUsd,
+    allocContext,
+    runActive: run.active,
+  })
 
   const safeAvailable = Number.isFinite(availableUsd) ? availableUsd : 0
   if (safeAvailable <= 0) {
@@ -2097,8 +2121,12 @@ function confirmAllocation(amount: number) {
     return
   }
 
+  console.log("[CONFIRM ALLOC CLICK]", {
+    amount,
+    allocContext,
+  })
+
   if (!allocContext) {
-    showToast("Error", "No allocation context")
     setAllocOpen(false)
     setStarting(false)
     return
@@ -2111,26 +2139,54 @@ function confirmAllocation(amount: number) {
   setAllocContext(null)
   setAllocOpen(false)
 
-  // ✅ 1) bloquear capital
   setAllocatedUsd(safeAmount)
+  setBaselineUsd(safeAmount)
 
-  console.log("[CONFIRM ALLOC] locked", { safeAmount })
-
-  // ✅ 2) arrancar preset / run
   if (ctx.mode === "PRESET") {
-    // IMPORTANTE: applyStartupPreset DEBE prender run.active adentro
     applyStartupPreset(ctx.presetId, safeAmount)
-  } else {
-    applyStrategy()
-    setRun({
-      active: true,
-      presetId: null,
-      durationSec: 3 * 24 * 60 * 60,
-      startedAtMs: Date.now(),
-      startPnl: 0,
-      startBalance: toNum(realBalanceUsd),
-    })
+    setStarting(false)
+    return
   }
+
+
+  // ✅ ADVANCED: aquí SÍ armamos run usando safeAmount
+  setRun({
+    active: true,
+    presetId: null,
+    durationSec: 3 * 24 * 60 * 60,
+    startedAtMs: Date.now(),
+    startPnl: 0,
+    startBalance: safeAmount, // ✅ CLAVE (no realBalanceUsd)
+  })
+
+  // ✅ deja que React aplique setRun + setAllocatedUsd antes de aplicar routing
+  setTimeout(() => {
+    applyStrategy()
+    try {
+      engine.actions.setPaused(false)
+    } catch {}
+    x9("Routing applied. Scanning for first entry…", 0)
+  }, 120)
+
+  useEffect(() => {
+  console.log("[ENGINE CHECK]", {
+    realBalanceUsd,
+    allocatedUsd,
+    baselineUsd,
+    engineBaseBalance,
+    equityBuffer,
+    enginePnl,
+    runActive: run.active,
+  })
+}, [
+  realBalanceUsd,
+  allocatedUsd,
+  baselineUsd,
+  engineBaseBalance,
+  equityBuffer,
+  enginePnl,
+  run.active,
+])
 
   setStarting(false)
   showToast("RUN LIVE", `Allocated ${fmtUsd(safeAmount)}`)
@@ -3376,6 +3432,7 @@ return (
 ) : null}
 
 
+
   </main>
 )
 
@@ -3864,121 +3921,4 @@ function demoWithdraw() {
   ])
 
   x9(`Withdraw requested → -${fmtUsd(amt)}`, -1)
-}
-
-
-function AllocateCapitalModal({
-  open,
-  maxUsd,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean
-  maxUsd: number
-  onClose: () => void
-  onConfirm: (amount: number) => void
-}) {
-  const [raw, setRaw] = useState("")
-
-  if (!open) return null
-
-  const n = Number(raw)
-  
-  const MIN_DEPOSIT_USD = 50
-
-const amount = Number.isFinite(n) ? Math.max(0, Math.min(maxUsd, n)) : 0
-const belowMin = amount > 0 && amount < MIN_DEPOSIT_USD
-const canConfirm = amount >= MIN_DEPOSIT_USD && amount <= maxUsd
-
-
-  return (
-
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
-
-      <div className="relative w-full max-w-[520px] rounded-[22px] border border-white/10 bg-black/75 p-5 neon-card">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[14px] text-white/90 font-semibold">¿Cuánto de tu saldo quieres meter?</div>
-            <div className="mt-1 text-[12px] text-white/60">
-              Mínimo: <span className="text-white/85 font-semibold">$50.00</span> · Máximo disponible:{" "}
-               <span className="text-white/85 font-semibold">{fmtUsd(maxUsd)}</span>
-            </div>
-          </div>
-
-          <button
-  disabled={!canConfirm}
-  onClick={() => onConfirm(amount)}
-  className="rounded-xl border border-emerald-300/25 bg-emerald-300/15 px-4 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-300/20 disabled:opacity-40"
->
-  Confirm
-</button>
-
-{belowMin ? (
-  <div className="mt-2 text-[11px] text-rose-200/90">
-    Minimum Deposit: $50.00
-  </div>
-) : null}
-
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
-          <div className="text-[10px] tracking-widest text-white/45">MONTO (USD)</div>
-          <input
-            className="mt-2 w-full rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-white/25"
-            placeholder={`0 — ${fmtUsd(maxUsd)}`}
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            inputMode="decimal"
-          />
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              onClick={() => setRaw(String((maxUsd * 0.25).toFixed(2)))}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/70 hover:bg-white/10"
-            >
-              25%
-            </button>
-            <button
-              onClick={() => setRaw(String((maxUsd * 0.5).toFixed(2)))}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/70 hover:bg-white/10"
-            >
-              50%
-            </button>
-            <button
-              onClick={() => setRaw(String((maxUsd * 0.75).toFixed(2)))}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-white/70 hover:bg-white/10"
-            >
-              75%
-            </button>
-            <button
-              onClick={() => setRaw(String(maxUsd.toFixed(2)))}
-              className="ml-auto rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-[11px] text-white/85 hover:bg-white/15"
-            >
-              MAX
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-[11px] text-white/70 hover:bg-white/5"
-          >
-            Cancelar
-          </button>
-
-          <button
-            disabled={amount <= 0}
-            onClick={() => onConfirm(amount)}
-            className="rounded-xl border border-emerald-300/25 bg-emerald-300/15 px-4 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-300/20 disabled:opacity-40"
-          >
-            Confirmar
-          </button>
-          
-        </div>
-      </div>
-    </div>
-  )
-}
-}
+}}

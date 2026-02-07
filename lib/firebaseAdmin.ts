@@ -25,3 +25,5 @@ const app =
 
 export const db = admin.firestore(app)
 export const FieldValue = admin.firestore.FieldValue
+
+

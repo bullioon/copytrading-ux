@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/firebaseAdmin"
 
@@ -24,5 +25,5 @@ export async function GET(req: Request) {
   }
 }
 
-// seguridad extra: fuerza que TS lo trate como módulo
+// 👇 esto evita el error “is not a module” si por alguna razón TS lo interpreta como script
 export {}
