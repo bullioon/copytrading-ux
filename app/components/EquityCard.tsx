@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useMemo, useState } from "react"
+import MiniEquityChartFTMO from "@/app/components/MiniEquityChartFTMO"
 
 type Health = "stable" | "warning" | "critical" | null
 type StartupPresetId = "SAFE_COPY" | "BALANCED_COPY" | "AGGRO_COPY"
@@ -66,10 +67,20 @@ export default function EquityCard({
   balanceDeltaUsd,
   onRequestDisableProtections,
 }: Props) {
+  type TF = "H" | "D" | "M"
+  const [tf, setTf] = useState<TF>("H")
+
+  // H: ~60 puntos, D/M: ~160 (tu buffer)
+  const tfLen = tf === "H" ? 60 : 160
+
   const seriesUsd = useMemo(() => {
-    const base = (equity?.length ? equity : [initialBalance]).map(Number).filter(Number.isFinite)
-    return base.length ? base : [Number(initialBalance) || 0]
-  }, [equity, initialBalance])
+    const base = (equity?.length ? equity : [initialBalance])
+      .map(Number)
+      .filter(Number.isFinite)
+
+    const safe = base.length ? base : [Number(initialBalance) || 0]
+    return safe.slice(-tfLen)
+  }, [equity, initialBalance, tfLen])
 
   const lastEquity = seriesUsd[seriesUsd.length - 1] ?? initialBalance
   const firstEquity = seriesUsd[0] ?? initialBalance
@@ -101,6 +112,7 @@ export default function EquityCard({
   const [autoZoom, setAutoZoom] = useState(true)
   const [unit, setUnit] = useState<"PCT" | "USD">("PCT")
 
+  // Chart: USD = delta vs start (USD), PCT = % vs start
   const chartValues = useMemo(() => {
     if (unit === "USD") return seriesUsd.map((v) => v - firstEquity)
     return seriesPct
@@ -124,6 +136,37 @@ export default function EquityCard({
     const extra = span * 0.22
     return { min: minV - extra, max: maxV + extra }
   }, [autoZoom, minV, maxV])
+
+  // ✅ NO sumar pnl otra vez: el equity buffer ya trae el valor final
+  const uiEquity = Number.isFinite(engineEquity) ? engineEquity : 0
+
+  // ===== TARGETS =====
+  // x2, x5 dependen del start
+  // HELLION: llegar a $1500 absoluto
+  const targets = useMemo(() => {
+    const start = Number.isFinite(firstEquity) ? Number(firstEquity) : 0
+    const hellionAbs = 1500
+
+    if (unit === "USD") {
+      // unit USD: chart = delta vs start
+      return [
+        { label: "x2", value: start * 1 },                 // +start
+        { label: "x5", value: start * 4 },                 // +4*start
+        { label: "HELLION $1500", value: hellionAbs - start }, // delta hasta 1500
+      ]
+    }
+
+    // unit PCT: chart = % vs start
+    const x2 = 100
+    const x5 = 400
+    const hellionPct = start > 0 ? ((hellionAbs - start) / start) * 100 : 0
+
+    return [
+      { label: "x2", value: x2 },
+      { label: "x5", value: x5 },
+      { label: "HELLION $1500", value: hellionPct },
+    ]
+  }, [unit, firstEquity])
 
   const healthLabel =
     health === "stable"
@@ -164,7 +207,7 @@ export default function EquityCard({
               <div className="text-[10px] tracking-widest text-white/40">BALANCE</div>
 
               <div className={`mt-1 text-[44px] leading-none font-semibold tabular-nums ${balanceTone}`}>
-                {fmtUsd(engineEquity)}
+                {fmtUsd(uiEquity)}
               </div>
 
               {typeof balanceDeltaUsd === "number" && (
@@ -188,7 +231,6 @@ export default function EquityCard({
                 <HudPill label="TARGET" value={fmtUsd(missionTargetUsd)} />
               </div>
 
-              {/* ================= STARTUP (MINI 2 + VIEW MORE) ================= */}
               {(onStartupPreset || startupHint) ? (
                 <div className="mt-4">
                   <div className="flex items-start justify-between gap-3">
@@ -294,15 +336,20 @@ export default function EquityCard({
 
       {/* ===== chart ===== */}
       <div className="mt-4 rounded-3xl border border-white/10 bg-black/35 p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        {/* ✅ minimal header + TF */}
+        <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-[10px] tracking-widest text-white/40">TRAJECTORY</div>
-            <div className="mt-1 text-[12px] text-white/55">Auto-zoom (keeps detail visible)</div>
+            <div className="mt-1 text-[12px] text-white/55">Timeframe + targets (x2 / x5 / Hellion)</div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <TogglePill label="AUTO ZOOM" active={autoZoom} onClick={() => setAutoZoom((v) => !v)} />
-            <TogglePill label="% VS START" active={unit === "PCT"} onClick={() => setUnit("PCT")} />
+            <TogglePill label="H" active={tf === "H"} onClick={() => setTf("H")} />
+            <TogglePill label="D" active={tf === "D"} onClick={() => setTf("D")} />
+            <TogglePill label="M" active={tf === "M"} onClick={() => setTf("M")} />
+            <div className="mx-1 h-5 w-px bg-white/10" />
+            <TogglePill label="AUTO" active={autoZoom} onClick={() => setAutoZoom((v) => !v)} />
+            <TogglePill label="%" active={unit === "PCT"} onClick={() => setUnit("PCT")} />
             <TogglePill label="USD" active={unit === "USD"} onClick={() => setUnit("USD")} />
           </div>
         </div>
@@ -316,23 +363,19 @@ export default function EquityCard({
           <StatMini label="TARGET" value={fmtUsd(missionTargetUsd)} />
         </div>
 
-        <MiniLineChart
-          values={chartValues}
-          stroke={lineColor}
-          labelLeft={unit === "PCT" ? "MIN" : "MIN USD"}
-          labelRight={unit === "PCT" ? "MAX" : "MAX USD"}
-          fixedRange={zoomedRange ?? undefined}
-          baseline={0}
-          formatValue={(v: number) => (unit === "PCT" ? `${v.toFixed(2)}%` : fmtUsd(v, { sign: true }))}
-        />
+      <MiniEquityChartFTMO
+  equity={seriesUsd}
+  baselineUsd={firstEquity}
+  maxLossUsd={-1000}
+  title="FTMO"
+/>
 
         <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
           <StatMini label="LAST" value={unit === "PCT" ? `${lastV.toFixed(3)}%` : fmtUsd(lastV, { sign: true })} />
           <StatMini label="PnL" value={fmtUsd(pnl, { sign: true })} />
-          <StatMini label="MODE" value={autoZoom ? "AUTO ZOOM" : "MANUAL"} />
+          <StatMini label="MODE" value={autoZoom ? "AUTO" : "MANUAL"} />
         </div>
 
-        {/* ✅ PON ESTO EXACTO ANTES de tus tarjetas completas abajo del chart */}
         <div id="full-presets" className="h-2" />
       </div>
     </section>
@@ -367,7 +410,6 @@ function StartupPresetMiniRow({
             "border-emerald-500/10 bg-black/30 hover:bg-white/6",
             "hover:border-emerald-300/20",
             "shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_10px_40px_rgba(0,0,0,0.55)]",
-
             !enabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "",
           ].join(" ")}
           style={{
@@ -395,10 +437,7 @@ function StartupPresetMiniRow({
         </button>
       ))}
 
-      <button
-        type="button"
-        onClick={onViewMore}
-      >
+      <button type="button" onClick={onViewMore} className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left hover:bg-white/6">
         <div className="text-[10px] tracking-widest text-white/45">FULL PRESETS</div>
         <div className="mt-1 text-[12px] font-semibold tracking-widest text-white/90">VIEW MORE →</div>
         <div className="mt-1 text-[11px] text-white/55">All drops + windows</div>
@@ -423,7 +462,7 @@ function TogglePill({ label, active, onClick }: { label: string; active: boolean
     <button
       onClick={onClick}
       className={[
-        "rounded-full border px-4 py-2 text-[11px] tracking-widest transition",
+        "rounded-full border px-3 py-2 text-[11px] tracking-widest transition",
         active ? "border-white/20 bg-white/10 text-white/85" : "border-white/10 bg-black/30 text-white/60 hover:bg-white/5",
       ].join(" ")}
     >
@@ -625,6 +664,7 @@ function MiniLineChart({
   formatValue,
   baseline = 0,
   smoothAlpha = 0.26,
+  targets,
 }: {
   values: number[]
   stroke: string
@@ -634,6 +674,7 @@ function MiniLineChart({
   formatValue?: (v: number) => string
   baseline?: number
   smoothAlpha?: number
+  targets?: { label: string; value: number }[]
 }) {
   const w = 980
   const h = 260
@@ -763,7 +804,7 @@ function MiniLineChart({
     <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-black/30">
       <svg
         viewBox={`0 0 ${w} ${h}`}
-        className="block w-full h-[260px] touch-none"
+        className="block w-full h-[180px] sm:h-[220px] md:h-[260px] touch-none"
         onMouseLeave={() => setHoverIdx(null)}
         onMouseMove={(e) => {
           const rect = (e.currentTarget as SVGElement).getBoundingClientRect()
@@ -802,6 +843,25 @@ function MiniLineChart({
         })}
 
         <line x1={0} y1={baselineY} x2={w} y2={baselineY} stroke="rgba(255,255,255,0.10)" />
+
+        {/* ✅ TARGET LINES */}
+        {targets?.map((t) => {
+          const ty = sy(t.value)
+          return (
+            <g key={t.label}>
+              <line x1={0} y1={ty} x2={w} y2={ty} stroke="rgba(255,255,255,0.08)" strokeDasharray="6 6" />
+              <text
+                x={w - pad - 170}
+                y={clamp(ty - 6, 14, h - 10)}
+                fill="rgba(255,255,255,0.42)"
+                fontSize="10"
+                letterSpacing="1.2"
+              >
+                {t.label}
+              </text>
+            </g>
+          )
+        })}
 
         {negAreaPath ? <path d={negAreaPath} fill="rgba(244,63,94,0.10)" /> : null}
         {posAreaPath ? <path d={posAreaPath} fill="rgba(34,197,94,0.10)" /> : null}

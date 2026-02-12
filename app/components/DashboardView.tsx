@@ -30,10 +30,17 @@ import StrategyTransitionPreview from "./StrategyTransitionPreview"
 import { useSixXSFeedback } from "../hooks/useSixXSFeedback"
 
 // ✅ ESTE IMPORT FALTABA
+
 import PhantomDeposit from "@/app/components/PhantomDeposit"
 import type { TriggerOption } from "./PlanBConfigPanel"
 
 import { AllocateCapitalModal } from "@/app/components/AllocateCapitalModal"
+
+// ✅ CHART STYLES
+
+import MiniEquityChartFTMO from "@/app/components/MiniEquityChartFTMO"
+
+
 
 
 /* ================= TYPES ================= */
@@ -1068,8 +1075,6 @@ const renderPresetButton = (id: StartupPresetId) => {
         </div>
       )}
 
-
-
 {specialHot ? (
  
  <button
@@ -1151,34 +1156,30 @@ function MobileTabBar({
     <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/70 backdrop-blur">
       <div className="mx-auto max-w-5xl px-3 py-2">
         <div className="grid grid-cols-4 gap-2">
-          {items.map(it => {
-            const active = tab === it.k
-            return (
-              <button
-                key={it.k}
-                onClick={() => onTab(it.k)}
-                className={[
-                  "rounded-2xl border px-2 py-2 text-center transition",
-                  active
-                    ? "border-white/20 bg-white/10"
-                    : "border-white/10 bg-black/40 hover:bg-white/5",
-                ].join(" ")}
-              >
-                <div className={["text-[11px] tracking-widest font-semibold", active ? "text-white/90" : "text-white/60"].join(" ")}>
-                  {it.label}
-                </div>
-                <div className={["text-[9px] tracking-widest", active ? "text-white/55" : "text-white/35"].join(" ")}>
-                  {it.sub}
-                </div>
-              </button>
-            )
-          })}
+         {items.slice(0, 3).map(it => {
+  const active = tab === it.k
+
+  return (
+    <button
+      key={it.k}
+      onClick={() => onTab(it.k)}
+      className={[
+        "rounded-2xl border px-2 py-2 text-center transition",
+        active
+          ? "border-white/25 bg-white/10 text-white"
+          : "border-white/10 bg-black/30 text-white/60"
+      ].join(" ")}
+    >
+      <div className="text-xs font-semibold">{it.label}</div>
+      <div className="text-[10px] opacity-50">{it.sub}</div>
+    </button>
+  )
+})}
         </div>
       </div>
     </div>
   )
 }
-
 
 const TABS: ReadonlyArray<readonly [TabKey, string]> = [
   ["dashboard", "DASH"],
@@ -1186,7 +1187,6 @@ const TABS: ReadonlyArray<readonly [TabKey, string]> = [
   ["wallet", "WALLET"],
   ["support", "SUPPORT"],
 ] as const
-
 
 // ================= PRESET DROPS (ROTATING) =================
 
@@ -1220,10 +1220,12 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
     return () => clearInterval(t)
   }, [])
 
+
+  const [tf, setTf] = useState<"H" | "D" | "M">("H")
+
+
   // ✅ STATE SIEMPRE ADENTRO DEL COMPONENTE
   const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
-
-  
 
   async function refreshBalance(wallet: string) {
     try {
@@ -1256,6 +1258,7 @@ const walletBalanceUsd = realBalanceUsd
 const [tab, setTab] = useState<TabKey>("dashboard")
 
   const [walletTxs, setWalletTxs] = useState<WalletTx[]>([
+    
     {
       id: "seed-dep",
       kind: "DEPOSIT",
@@ -1294,8 +1297,6 @@ function goTab(next: TabKey) {
 const isTorion = walletAccount.tier === "TORION"
 const depositMinUsd = isTorion ? 0 : 50
 
-
-  
   const VERSION = "v6.9.0"
 
     const isMobile = useMediaQuery("(max-width: 768px)")
@@ -1385,8 +1386,6 @@ const depositMinUsd = isTorion ? 0 : 50
 }
 
 
-
-
 useEffect(() => {
   const t = setInterval(() => {
     setDrops(shuffle(DROPS).slice(0, 3))
@@ -1404,41 +1403,10 @@ const lite = useMemo(() => {
 
 const MIN_BULLION_DEPOSIT = 50
 
- 
-/* ================= WALLET CARD (PHANTOM / SOLANA INSPIRED) ================= */
-const DEMO_CARD_BALANCE = 336 // visual only
-const [hoverCard, setHoverCard] = useState(false)
-const [animUsd, setAnimUsd] = useState(0)
-
-useEffect(() => {
-  // anima 0 -> DEMO_CARD_BALANCE cuando NO está hover
-  if (hoverCard) return
-
-  let raf = 0
-  const from = 0
-  const to = DEMO_CARD_BALANCE
-  const dur = 1100
-  const t0 = performance.now()
-
-  const tick = (t: number) => {
-    const p = Math.min(1, (t - t0) / dur)
-    const e = 1 - Math.pow(1 - p, 3) // easing suave
-    setAnimUsd(from + (to - from) * e)
-    if (p < 1) raf = requestAnimationFrame(tick)
-  }
-
-  raf = requestAnimationFrame(tick)
-  return () => cancelAnimationFrame(raf)
-}, [hoverCard])
-
-const cardShownUsd = hoverCard ? 0 : animUsd
-
 
 /* ================= BULLION / WALLET BALANCE ================= */
 
 const isBullion = walletAccount.tier === "BULLION"
-
-
 
 type WalletTxKind = "DEPOSIT" | "WITHDRAW"
 type WalletTx = {
@@ -1450,8 +1418,6 @@ type WalletTx = {
   status?: "CONFIRMED" | "PENDING" | "FAILED"
   note?: string
 }
-
-
 
 
   /* ===== FX + METRICS ===== */
@@ -1475,7 +1441,6 @@ type WalletTx = {
     })
   }
 
-
   type QuickEvent =
   | { type: "SPECIAL_TRIGGERED"; ts: number; dd: number; streak: number; flatMs: number }
   | { type: "PRESET_VIEWED"; ts: number; presetId: StartupPresetId }
@@ -1486,6 +1451,33 @@ type WalletTx = {
 const [quickEvents, setQuickEvents] = useState<QuickEvent[]>([])
 function logQuick(e: QuickEvent) {
   setQuickEvents(prev => [...prev, e].slice(-200))
+}
+
+
+/* ===== EXECUTION TERMINAL (DEALS) ===== */
+type ExecDeal = {
+  id: string
+  ts: number
+  side: "LONG" | "SHORT"
+  symbol: string
+  price: number
+  sizeUsd: number
+  pnlUsd?: number
+  label?: string
+}
+
+const [execDeals, setExecDeals] = useState<ExecDeal[]>([])
+
+// ✅ dedupe: para no registrar el mismo cierre 20 veces
+const seenDealIdsRef = useRef<Set<string>>(new Set())
+
+function pushDeal(d: Omit<ExecDeal, "id" | "ts">) {
+  const item: ExecDeal = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    ts: Date.now(),
+    ...d,
+  }
+  setExecDeals((prev) => [item, ...prev].slice(0, 200))
 }
 
   /* ===== 6XS (CONVERSATIONAL) ===== */
@@ -1605,7 +1597,6 @@ const [activeRole, setActiveRole] = useState<Role | null>(null)
   /* ===== EQUITY BUFFER ===== */
   const [equityBuffer, setEquityBuffer] = useState<number[]>([])
 
-  
 
   /* ===== BASELINE (BALANCE INICIAL FIJO) ===== */
   const [baselineUsd, setBaselineUsd] = useState<number | null>(null)
@@ -1614,22 +1605,18 @@ const [activeRole, setActiveRole] = useState<Role | null>(null)
 const drawdown = useEquityDrawdown({ equityBuffer })
 const [planBTrigger, setPlanBTrigger] = useState<TriggerOption>(-6)
 
-
-
 /* ===== PLAN B TRADER (BACKUP) ===== */
 const [planBTraderId, setPlanBTraderId] = useState<number | null>(null)
 
 const healthStatus = useStrategyHealth({
   pnl: drawdown,
   config: { warningDD: planBTrigger + 2, criticalDD: planBTrigger },
-})/* ================= CAPITAL ================= */
+
+})
+/* ================= CAPITAL ================= */
 
 // ✅ saldo asignado al engine (lo “bloqueado” para correr estrategia)
 const [allocatedUsd, setAllocatedUsd] = useState<number>(0)
-
-/* ===== RISK BRAKE OVERRIDE ===== */
-const [disableRiskBrake, setDisableRiskBrake] = useState(false)
-
 
 useEffect(() => {
   const tierU = String(walletAccount?.tier ?? "").toUpperCase()
@@ -1642,54 +1629,46 @@ useEffect(() => {
 
   const demonSeedUsd = 50
 
-  // ✅ base:
-  // - DEMON: 50
-  // - BULLION: 0 (free)
-  // - otros: baseBalance del account
   const rawAccountBase = Number(walletAccount?.baseBalance)
   const accountBase = Number.isFinite(rawAccountBase) ? rawAccountBase : 0
 
-const tierSeed =
-  tierU === "HELLION" ? 1500 :
-  tierU === "TORION" ? 3000 :
-  0
+  const tierSeed =
+    tierU === "HELLION" ? 1500 :
+    tierU === "TORION" ? 3000 :
+    0
 
-const base =
-  isDemon ? demonSeedUsd :
-  isBullion ? 0 :
-  (accountBase > 0 ? accountBase : tierSeed)
+  const base =
+    isDemon ? demonSeedUsd :
+    isBullion ? 0 :
+    (accountBase > 0 ? accountBase : tierSeed)
 
+  // ✅ 1) set baseline SOLO si no existe o si cambió el tier/base
+  setBaselineUsd(prev => {
+    // si no hay baseline, la sembramos
+    if (prev == null) return base
+    // si el cambio es grande (cambiaste de tier / seed), actualiza baseline
+    if (Math.abs(prev - base) > 0.01) return base
+    return prev
+  })
 
+  // ✅ 2) seed inicial del equityBuffer si está vacío
+  setEquityBuffer(prev => {
+    if (prev.length) return prev
+    return [base]
+  })
+
+  // ✅ 3) si quieres: resetea allocated cuando cambias de cuenta/tier
+  setAllocatedUsd(a => (a > base ? base : a))
 }, [
   walletAccount?.tier,
   walletAccount?.baseBalance,
   isBullion,
   (walletAccount as any)?.handle,
   (walletAccount as any)?.name,
-  realBalanceUsd,
 ])
 
 const canTrade = !isBullion || realBalanceUsd >= MIN_BULLION_DEPOSIT
 
-
-
-/* ===== AVAILABLE FOR ALLOCATION (NO DEPENDE DEL ENGINE) ===== */
-const availableUsd = useMemo(() => {
-  const raw = run.active
-    ? realBalanceUsd - allocatedUsd
-    : realBalanceUsd
-
-  return Math.max(0, Number.isFinite(raw) ? raw : 0)
-}, [run.active, realBalanceUsd, allocatedUsd])
-
-useEffect(() => {
-  console.log("[ALLOC DEBUG]", {
-    runActive: run.active,
-    realBalanceUsd,
-    allocatedUsd,
-    availableUsd,
-  })
-}, [run.active, realBalanceUsd, allocatedUsd, availableUsd])
 
 /* ================= ENGINE ACCOUNT (SEPARADO DEL WALLET) ================= */
 // ✅ El engine usa allocatedUsd SOLO cuando está corriendo.
@@ -1704,17 +1683,21 @@ const engineAccount = useMemo(() => {
   }
 }, [run.active, allocatedUsd, realBalanceUsd])
 
-
 /* ================= POLICY (SIN CICLOS) ================= */
 
-const [engineDdPct, setEngineDdPct] = useState(0)
+// ✅ OVERRIDE (policy brake) — debe existir ANTES de policy
+// (si ya lo tienes en otra parte, NO lo dupliques)
+const [disableRiskBrake, setDisableRiskBrake] = useState(false)
 
+// ✅ mirror DD del engine (policy SIN ciclo)
+const [engineDdPct, setEngineDdPct] = useState<number>(0)
+
+// ✅ policy usa SOLO state (no engine directo)
 const policy = useEnginePolicy({
   drawdownPct: engineDdPct,
   health: healthStatus,
   disableRiskBrake,
 })
-
 
 /* ================= ENGINE INPUT ================= */
 /**
@@ -1741,34 +1724,230 @@ useEffect(() => {
   })
 }, [run.active, allocatedUsd, realBalanceUsd])
 
-
 /* ================= ENGINE ================= */
-
 
 const market = useMarketPrices() // ✅ REAL
 
-
 const engine = useTradingEngine({
-  account: engineAccount,   // ❗ NO uses `account` real aquí
+  account: engineAccount, // ✅ tu memo { baseBalance, active }
   traders: engineTraders,
   market,
   policy,
   runActive: run.active,
+  // si tu engine no lo usa, puedes borrarlo
   disableRiskBrake,
 })
 
-
 const { metrics, trades, status } = engine
 
+
+/* ================= TOTAL EQUITY (SOURCE OF TRUTH) ================= */
+
+// PnL del engine SOLO cuenta cuando run.active
+const enginePnlUsd = useMemo(() => {
+  if (!run.active) return 0
+  const v = (metrics as any)?.pnl
+  return Number.isFinite(v) ? Number(v) : 0
+}, [run.active, (metrics as any)?.pnl])
+
+// TOTAL EQUITY real: wallet + pnl si aplica
+const totalEquityUsd = useMemo(() => {
+  const base = Number.isFinite(realBalanceUsd as any) ? Number(realBalanceUsd) : 0
+  return base + enginePnlUsd
+}, [realBalanceUsd, enginePnlUsd])
+
+// UI balance principal del DASH:
+// - si run.active: allocated + pnl
+// - si NO: wallet total
+const uiBalanceUsd = useMemo(() => {
+  if (!run.active) return totalEquityUsd
+  const alloc = Number.isFinite(allocatedUsd as any) ? Number(allocatedUsd) : 0
+  return alloc + enginePnlUsd
+}, [run.active, totalEquityUsd, allocatedUsd, enginePnlUsd])
+
+/* ===== AVAILABLE FOR ALLOCATION (FROM TOTAL EQUITY) ===== */
+const availableUsd = useMemo(() => {
+  const alloc = Number.isFinite(allocatedUsd as any) ? Number(allocatedUsd) : 0
+  const raw = run.active ? (totalEquityUsd - alloc) : totalEquityUsd
+  return Math.max(0, Number.isFinite(raw as any) ? Number(raw) : 0)
+}, [run.active, totalEquityUsd, allocatedUsd])
+
+
+/* ================= BALANCE SOURCE OF TRUTH ================= */
+
+// PnL del engine (seguro)
+const enginePnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
+
+/* ================= EQUITY BUFFER (CHART) =================
+   ✅ Se mueve SOLO cuando cambia el balance (no ticker).
+*/
+
 useEffect(() => {
-  const open = trades.filter(t => t.status === "open")
-  console.log("[UI TRADES CHECK]", {
-    total: trades.length,
-    open: open.length,
-    sampleOpen: open[0],
-    sampleAll: trades[0],
+  // si no está corriendo, no empujes puntos (para que no “camine” sola)
+  if (!run.active) return
+  if (!Number.isFinite(uiBalanceUsd)) return
+
+  setEquityBuffer(prev => {
+    const last = prev[prev.length - 1]
+    // evita spam de puntos idénticos
+    if (last != null && Math.abs(uiBalanceUsd - last) < 0.01) return prev
+    const next = [...prev, uiBalanceUsd]
+    return next.length > 160 ? next.slice(-160) : next
   })
+}, [run.active, uiBalanceUsd, setEquityBuffer])
+
+const equityForChart = equityBuffer
+
+
+// ================= REALIZED PNL (SOLO CLOSED) =================
+const realizedPnlUsd = useMemo(() => {
+  const src = (trades as any[]) || []
+  let sum = 0
+
+  for (const t of src) {
+    const st = String(t.status ?? t.state ?? t.phase ?? "").toLowerCase()
+
+    const isClosed =
+      st === "closed" || st === "done" || st === "filled" || st === "settled" || st === "complete" ||
+      st.includes("close") || st.includes("fill") || st.includes("settle")
+
+    if (!isClosed) continue
+
+    const pnl = Number(t.pnlUsd ?? t.pnl ?? t.profitUsd ?? t.profit ?? 0)
+    if (Number.isFinite(pnl)) sum += pnl
+  }
+
+  return sum
 }, [trades])
+
+/* ================= SAFE METRICS ================= */
+const engineDrawdownPct = Number.isFinite(metrics?.drawdownPct as any) ? Number(metrics!.drawdownPct) : 0
+
+/* ================= DRAWDOWN MIRROR (NO CICLO) ================= */
+// policy lee engineDdPct (state), y aquí lo actualizamos desde metrics (safe)
+useEffect(() => {
+  setEngineDdPct(engineDrawdownPct)
+}, [engineDrawdownPct])
+
+
+/* ================= EXECUTION DEALS SYNC ================= */
+
+const seenTradeIdsRef = useRef<Set<string>>(new Set())
+
+useEffect(() => {
+  const src = Array.isArray(trades as any) ? (trades as any[]) : []
+  if (!src.length) return
+
+  for (const t of src) {
+    const st = String(t.status ?? t.state ?? t.phase ?? "").toLowerCase()
+
+    const isClosed =
+      st === "closed" ||
+      st === "done" ||
+      st === "filled" ||
+      st === "settled" ||
+      st === "complete" ||
+      st.includes("close") ||
+      st.includes("fill") ||
+      st.includes("settle")
+
+    if (!isClosed) continue
+
+    const stableId = String(
+      t.id ??
+        t.tradeId ??
+        t.dealId ??
+        t.orderId ??
+        `${t.symbol ?? t.pair ?? t.asset ?? "UNK"}-${t.openTs ?? t.openTime ?? ""}-${t.closeTs ?? t.closeTime ?? ""}-${t.closePrice ?? t.exitPrice ?? t.price ?? ""}`
+    )
+
+    if (seenTradeIdsRef.current.has(stableId)) continue
+    seenTradeIdsRef.current.add(stableId)
+
+    const rawSide = String(t.side ?? t.dir ?? t.direction ?? t.position ?? t.type ?? "LONG").toUpperCase()
+    const side: "LONG" | "SHORT" = rawSide.includes("SHORT") || rawSide.includes("SELL") ? "SHORT" : "LONG"
+
+    const symbol = String(t.symbol ?? t.pair ?? t.asset ?? t.market ?? "SOL")
+    const price = Number(t.closePrice ?? t.exitPrice ?? t.close ?? t.price ?? t.entryPrice ?? 0) || 0
+    const sizeUsd = Number(t.sizeUsd ?? t.notionalUsd ?? t.usd ?? t.size ?? t.notional ?? 0) || 0
+    const pnlUsd = Number(t.pnlUsd ?? t.pnl ?? t.profitUsd ?? t.profit ?? 0) || 0
+
+    pushDeal({ side, symbol, price, sizeUsd, pnlUsd, label: "Engine execution" })
+  }
+}, [trades, pushDeal])
+
+
+
+/* ================= EQUITY BUFFER TICKER (ÚNICA FUENTE) ================= */
+
+const latestUiBalanceRef = useRef<number>(0)
+
+useEffect(() => {
+  latestUiBalanceRef.current = Number.isFinite(uiBalanceUsd) ? uiBalanceUsd : 0
+}, [uiBalanceUsd])
+
+// seed inicial
+useEffect(() => {
+  setEquityBuffer(prev => (prev.length ? prev : [latestUiBalanceRef.current]))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
+
+// empuja 1 punto por segundo SIEMPRE
+useEffect(() => {
+  const t = setInterval(() => {
+    const v = latestUiBalanceRef.current
+    setEquityBuffer(prev => {
+      const next = [...prev, v]
+      return next.length > 160 ? next.slice(-160) : next
+    })
+  }, 1000)
+
+  return () => clearInterval(t)
+}, [])
+
+// ===== WALLET CARD (PHANTOM / SOLANA INSPIRED) =====
+const DEMO_CARD_BALANCE = 336 // visual only
+const [hoverCard, setHoverCard] = useState(false)
+const [animUsd, setAnimUsd] = useState(0)
+
+// wallet real
+const walletRealUsd =
+  Number.isFinite(realBalanceUsd) && realBalanceUsd > 0 ? realBalanceUsd : 0
+
+const hasRealFunds = walletRealUsd > 0
+
+// pnl seguro
+const safePnl = Number.isFinite(metrics?.pnl) ? Number(metrics?.pnl) : 0
+
+// total wallet mostrado (wallet + pnl) si ya hay fondos
+const walletTotalUsd = hasRealFunds
+  ? Math.max(0, walletRealUsd + safePnl)
+  : animUsd
+
+// hover: si hay fondos reales, NO lo bajes a 0
+const cardShownUsd = hasRealFunds ? walletTotalUsd : (hoverCard ? 0 : animUsd)
+
+useEffect(() => {
+  // anima demo SOLO si no hay fondos reales y no hover
+  if (hoverCard) return
+  if (hasRealFunds) return
+
+  let raf = 0
+  const from = 0
+  const to = DEMO_CARD_BALANCE
+  const dur = 1100
+  const t0 = performance.now()
+
+  const tick = (t: number) => {
+    const p = Math.min(1, (t - t0) / dur)
+    const e = 1 - Math.pow(1 - p, 3)
+    setAnimUsd(from + (to - from) * e)
+    if (p < 1) raf = requestAnimationFrame(tick)
+  }
+
+  raf = requestAnimationFrame(tick)
+  return () => cancelAnimationFrame(raf)
+}, [hoverCard, hasRealFunds])
 
 
 /* ================= UI TRADES DEBUG ================= */
@@ -1782,55 +1961,83 @@ useEffect(() => {
   })
 }, [trades])
 
+
+// ================= EQUITY BUFFER (CHART SOURCE) =================
+
+// seed: 1 punto siempre (no vacío)
+useEffect(() => {
+  setEquityBuffer(prev => (prev.length ? prev : [uiBalanceUsd]))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
+
+// push SOLO cuando cambia el balance (closed pnl / deposit / etc)
+useEffect(() => {
+  if (!Number.isFinite(uiBalanceUsd)) return
+
+  setEquityBuffer(prev => {
+    const last = prev[prev.length - 1]
+    if (typeof last === "number" && Math.abs(uiBalanceUsd - last) < 0.0001) return prev
+
+    const next = [...prev, uiBalanceUsd]
+    return next.length > 160 ? next.slice(-160) : next
+  })
+}, [uiBalanceUsd])
 /* ================= TRADE TRANSITIONS (OPEN / CLOSE) ================= */
 
-const prevTradesRef = useRef<typeof trades>([])
+const prevTradesRef = useRef<any[]>([])
 
 useEffect(() => {
-  const prev = prevTradesRef.current
-  const curr = trades
+  const prev = prevTradesRef.current ?? []
+  const curr = Array.isArray(trades) ? trades : []
 
-  const prevById = new Map(prev.map(t => [t.id, t]))
-  const currById = new Map(curr.map(t => [t.id, t]))
-
-  /* ===== OPEN (NUEVO) ===== */
-  for (const t of curr) {
-    if (!prevById.has(t.id) && t.status === "open") {
-      playTone?.("good")
-      x9(`Opened ${t.pair} ${t.direction} · risk ${fmtUsd(t.riskUsd)}`, +1)
-
-      pushEvent({
-        type: "SYSTEM",
-        label: `OPEN ${t.pair} ${t.direction}`,
-        impact: +1,
-      })
-
-      // 🔥 aquí luego conectas proximity / speed / truster
-      // reactToTrade?.({ type: "OPEN", trade: t })
-    }
+  const prevById = new Map<string, any>()
+  for (const p of prev) {
+    const pp: any = p
+    const pid = String(pp?.id ?? "")
+    if (pid) prevById.set(pid, pp)
   }
 
-  /* ===== CLOSE (open → closed) ===== */
-  for (const p of prev) {
-    const t = currById.get(p.id)
-    if (p.status === "open" && t && t.status === "closed") {
-      const impact = t.pnlUsd > 0 ? 1 : t.pnlUsd < 0 ? -1 : 0
+  for (const t of curr) {
+    const tt: any = t
+    const id = String(tt?.id ?? "")
+    if (!id) continue
 
-      playTone?.(impact > 0 ? "good" : impact < 0 ? "warn" : "info")
+    const before: any = prevById.get(id)
 
-      x9(
-        `Closed ${t.pair} · ${t.closeReason} · PnL ${fmtUsd(t.pnlUsd, { sign: true })}`,
-        impact
+    const currStatus = String(tt?.status ?? "").toUpperCase()
+    const prevStatus = String(before?.status ?? "").toUpperCase()
+
+    const isClosed =
+      currStatus.includes("CLOSE") ||
+      currStatus.includes("CLOSED") ||
+      currStatus.includes("DONE") ||
+      currStatus.includes("EXIT") ||
+      Boolean(tt?.closedAt)
+
+    const wasOpen =
+      !!before &&
+      !(
+        prevStatus.includes("CLOSE") ||
+        prevStatus.includes("CLOSED") ||
+        prevStatus.includes("DONE") ||
+        prevStatus.includes("EXIT") ||
+        Boolean(before?.closedAt)
       )
 
-      pushEvent({
-        type: "SYSTEM",
-        label: `CLOSE ${t.pair} ${t.closeReason} ${fmtUsd(t.pnlUsd, { sign: true })}`,
-        impact,
-      })
+    if (isClosed && wasOpen) {
+      if (seenDealIdsRef.current.has(id)) continue
+      seenDealIdsRef.current.add(id)
 
-      // 🔥 aquí luego conectas proximity / speed / truster
-      // reactToTrade?.({ type: "CLOSE", trade: t })
+      console.log("🔥 PUSHING DEAL", { id, status: currStatus, tt })
+
+      pushDeal({
+        side: String(tt.direction ?? tt.side ?? "LONG").toUpperCase().includes("SHORT") ? "SHORT" : "LONG",
+        symbol: String(tt.pair ?? tt.symbol ?? tt.asset ?? tt.market ?? "SOL"),
+        price: Number(tt.closePrice ?? tt.exitPrice ?? tt.close ?? tt.price ?? 0) || 0,
+        sizeUsd: Number(tt.sizeUsd ?? tt.notionalUsd ?? tt.usd ?? tt.size ?? tt.notional ?? 0) || 0,
+        pnlUsd: Number(tt.pnlUsd ?? tt.pnl ?? tt.profitUsd ?? tt.profit ?? 0) || 0,
+        label: "Engine execution",
+      })
     }
   }
 
@@ -1862,13 +2069,6 @@ useEffect(() => {
   metrics.synthPrices?.btc,
   trades.length,
 ])
-
-/* ================= DRAWDOWN MIRROR ================= */
-
-useEffect(() => {
-  const dd = Number.isFinite(metrics.drawdownPct) ? metrics.drawdownPct : 0
-  setEngineDdPct(dd)
-}, [metrics.drawdownPct])
 
 /* ================= OPEN TRADES (UI) ================= */
 
@@ -1933,8 +2133,8 @@ useEffect(() => {
   }
   if (specialWasHotRef.current) return
   specialWasHotRef.current = true
-  specialFirstSeenMsRef.current = Date.now()
-
+  specialFirstSeenMsRef.current
+  
   logQuick({
     type: "SPECIAL_TRIGGERED",
     ts: Date.now(),
@@ -1944,21 +2144,15 @@ useEffect(() => {
   })
 }, [specialHot, drawdown, lossStreak, equityFlatMs])
 
-/* ===== BASELINE (BALANCE INICIAL FIJO, SIEMPRE WALLET REAL) ===== */
+/* ===== BASELINE (BALANCE INICIAL FIJO) =====
+   baselineUsd se fija SOLO al confirmar allocation (setBaselineUsd(safeAmount)).
+   Aquí únicamente lo limpiamos cuando no hay run.
+*/
 useEffect(() => {
-  // Si no hay run, limpia baseline para que el próximo run vuelva a fijarlo
-  if (!run.active) {
-    if (baselineUsd !== null) setBaselineUsd(null)
-    return
+  if (!run.active && baselineUsd !== null) {
+    setBaselineUsd(null)
   }
-
-  // Al iniciar un run: baseline = wallet real (NO allocated)
-  if (baselineUsd === null && realBalanceUsd > 0) {
-    setBaselineUsd(realBalanceUsd)
-  }
-}, [run.active, baselineUsd, realBalanceUsd])
-
-
+}, [run.active, baselineUsd])
 
 /* ===== 6XS STATE MACHINE ===== */
 const sixxsState = useMemo(() => {
@@ -1988,19 +2182,16 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [sixxsState])
 
-const enginePnl = Number.isFinite(metrics?.pnl) ? Number(metrics.pnl) : 0
-
-// ✅ lo que el usuario siente como “balance”: wallet real + pnl del engine
-const currentTotalUsd = realBalanceUsd + enginePnl
-
-const ref = baselineUsd ?? realBalanceUsd
-const deltaFromBase = currentTotalUsd - ref
+// ✅ Delta vs baseline (start fijo)
+const refUsd = baselineUsd ?? totalEquityUsd
+const deltaFromBase = uiBalanceUsd - refUsd
 
 const balanceTone =
-  deltaFromBase < 0 ? "text-rose-300" :
-  deltaFromBase > 0 ? "text-emerald-300" :
-  "text-white/90"
-
+  deltaFromBase < 0
+    ? "text-rose-300"
+    : deltaFromBase > 0
+      ? "text-emerald-300"
+      : "text-white/90"
 
   /* ===== 6XS HEARTBEAT + NEXT DECISION COUNTDOWN ===== */
   useEffect(() => {
@@ -2039,6 +2230,7 @@ const t = setInterval(() => {
         }
 
         if (st.includes("copy")) {
+
   // ✅ si hay pin activo, NO pises el mensaje
   if (Date.now() < (sixxsPinUntilMsRef.current || 0)) return
   x9("Configuring execution… almost ready.", 0)
@@ -2052,8 +2244,7 @@ const t = setInterval(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.active, status, policy])
 
-
-
+  
  /* ================= CAPITAL ALLOCATION (ONE STRATEGY AT A TIME) ================= */
 
 const [allocOpen, setAllocOpen] = useState(false)
@@ -2087,6 +2278,26 @@ useEffect(() => {
 
 
 /* ===== OPEN ALLOCATION ===== */
+
+// ===== ALLOCATION BALANCE SOURCE (USD ONLY) =====
+
+useEffect(() => {
+  const v = toNum(availableUsd)
+  if (v > 0) lastGoodBalanceRef.current = v
+}, [availableUsd])
+
+
+const walletUsd = toNum(realBalanceUsd) // lo que viene de firebase wallet
+const pnlUsd = toNum(enginePnl) // OJO: aquí pon la MISMA variable que ya usas para pintar "PnL +$..."
+const equityUsd = walletUsd + pnlUsd
+
+const maxUsdForAlloc = Math.max(0, equityUsd || walletUsd)
+console.log("[ALLOC MAX]", { walletUsd, pnlUsd, equityUsd, maxUsdForAlloc })
+
+
+/* ===== OPEN ALLOCATION ===== */
+console.log("[ALLOC DEBUG]", { realBalanceUsd, availableUsd })
+
 function requestAllocation(ctx: NonNullable<typeof allocContext>) {
   // telemetry
   logQuick({
@@ -2114,7 +2325,7 @@ function confirmAllocation(amount: number) {
     runActive: run.active,
   })
 
-  const safeAvailable = Number.isFinite(availableUsd) ? availableUsd : 0
+const safeAvailable = maxUsdForAlloc
   if (safeAvailable <= 0) {
     showToast("No funds available", "Your available balance is $0.00")
     setAllocOpen(false)
@@ -2167,26 +2378,6 @@ function confirmAllocation(amount: number) {
     } catch {}
     x9("Routing applied. Scanning for first entry…", 0)
   }, 120)
-
-  useEffect(() => {
-  console.log("[ENGINE CHECK]", {
-    realBalanceUsd,
-    allocatedUsd,
-    baselineUsd,
-    engineBaseBalance,
-    equityBuffer,
-    enginePnl,
-    runActive: run.active,
-  })
-}, [
-  realBalanceUsd,
-  allocatedUsd,
-  baselineUsd,
-  engineBaseBalance,
-  equityBuffer,
-  enginePnl,
-  run.active,
-])
 
   setStarting(false)
   showToast("RUN LIVE", `Allocated ${fmtUsd(safeAmount)}`)
@@ -2279,7 +2470,6 @@ function confirmAllocation(amount: number) {
   issuedAt: Date.now(),
 })
 
-
     setDiplomaOpen(true)
 
     pushEvent({
@@ -2297,8 +2487,6 @@ function confirmAllocation(amount: number) {
     if (run.durationSec > 0 && runRemainingSec <= 0) endRun("AUTO")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runRemainingSec, run.active])
-
-
   
   /* ===== STARTUP PRESETS (TOP STRATEGIES) ===== */
   function applyStartupPreset(id: StartupPresetId, allocationUsd: number) {
@@ -2338,7 +2526,6 @@ const days =
   (3 + Math.floor(Math.random() * 4))                                 // 3–6
 
 const durationSec = Math.min(MAX_DAYS, days) * 24 * 60 * 60
-
 
     setRun({
       active: true,
@@ -2489,6 +2676,7 @@ if (lite) {
       <Toast toast={toast} />
 
       <div className="p-4 space-y-3">
+        
         {/* HERO CARD */}
         <div
           className="rounded-[24px] border border-white/10 bg-black/55 p-4 neon-card"
@@ -2517,11 +2705,25 @@ if (lite) {
             <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
               {fmtUsd(equityLite)}
             </div>
-            <div className="mt-1 text-[11px] text-white/55">
-              Wallet {fmtUsd(realBalanceUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}
-            </div>
+            <div className="mt-1 text-[11px] text-white/55">Wallet {fmtUsd(realBalanceUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}            </div>
           </div>
 
+{process.env.NODE_ENV !== "production" ? (
+  <div className="text-[10px] text-white/40">
+   equity len: {equityBuffer.length} · last: {String(equityBuffer[equityBuffer.length - 1])}
+  </div>
+) : null}
+
+      {/* ================= CHART SE LLAMA AQUI ================= */}
+
+<MiniEquityChartFTMO
+  equity={equityBuffer}
+  baselineUsd={baselineUsd ?? equityBuffer?.[0] ?? 0}
+  maxLossUsd={-1000}
+  hellionUsd={1500}
+  showTargets
+  title="· HELLION"
+/>
 
           {/* QUICK ACTIONS */}
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -2613,11 +2815,48 @@ return (
           className={["rounded-[28px] border p-5 md:p-6 neon-card", theme.border].join(" ")}
           style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 70px ${theme.glow}` }}
         >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:gap-6">
-            
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:gap-6">     
 
   {/* LEFT */}
   <div className="md:col-span-8 space-y-4 md:space-y-6">
+
+
+    <section className="mb-4 rounded-2xl border border-white/10 bg-black/40 p-4 neon-card">
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-3">
+      <div className="h-8 w-8 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-xs font-bold text-emerald-300">
+        B
+      </div>
+      <div>
+        <div className="text-xs tracking-widest text-white/40">
+          BULLION ENGINE
+        </div>
+        <div className="text-sm font-semibold text-white/80">
+          HELLION V6.9
+        </div>
+      </div>
+    </div>
+
+    <div className="text-[10px] text-white/50 tracking-widest">
+      BUILD 06.09 • LIVE CORE
+    </div>
+  </div>
+
+  <div className="mt-3 grid grid-cols-3 gap-3 text-[11px] text-white/60">
+    <div>
+      <div className="text-white/40">Core</div>
+      <div className="text-white/80">Atlas Vortex</div>
+    </div>
+    <div>
+      <div className="text-white/40">Risk Model</div>
+      <div className="text-white/80">Dynamic DD Guard</div>
+    </div>
+    <div>
+      <div className="text-white/40">Latency</div>
+      <div className="text-emerald-300">4ms avg</div>
+    </div>
+  </div>
+</section>
     
     {/* EQUITY */}
 
@@ -2655,7 +2894,12 @@ return (
   balanceTone={balanceTone}
   balanceDeltaUsd={deltaFromBase}
   onStartupPreset={(id) => requestAllocation({ mode: "PRESET", presetId: id })}
-  onRequestDisableProtections={() => setDisableRiskBrake(true)}
+onRequestDisableProtections={() => {
+  setDisableRiskBrake(true)
+  try { engine.actions.setPaused(false) } catch {}
+  x9("Override enabled. Risk brake OFF.", 1)
+  showToast("Override ON", "Risk brake disabled")
+}}
 />
 
 <QuickCopyTopStrategies
@@ -2674,7 +2918,7 @@ return (
   }}
   starting={starting}
   specialHot={false} // ✅ por ahora (hasta que tengas lógica)
-  signals={{ drawdownPct: engineDdPct, lossStreak, equityFlatMs: 0 }} // ✅ sin "signals" externo
+  signals={{ drawdownPct: engineDdPct, lossStreak, equityFlatMs }} // ✅ sin "signals" externo
 />
 
 
@@ -2734,7 +2978,6 @@ return (
 
   <LiveActivityFeed />
 
-
     {/* PRO DROPS */}
     <ProStrategyFeed
       tier={walletAccount.tier}
@@ -2749,29 +2992,24 @@ return (
       <div className="text-[10px] tracking-widest text-white/55">DEPOSIT</div>
       <div className="mt-3">
 
-
 {/* ================= PHANTOM DEPOSIT PANEL (WRAPPER UI) ================= */}
 <div className="rounded-[28px] border border-white/10 bg-black/45 p-5 neon-card">
-  {/* HEADER */}
+
+  {/* HEADER (FIXED LAYOUT) */}
   <div className="flex items-start justify-between gap-3">
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
-        {/* icon */}
-        <div className="flex items-center gap-2">
-       
-       <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
-  <img
-    src="/phantom.svg"
-    alt="Phantom"
-    className="h-4 w-4 object-contain opacity-95"
-    draggable={false}
-  />
-</div>
-
-          <div className="text-[10px] tracking-widest text-white/60">PHANTOM DEPOSIT</div>
+        <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
+          <img
+            src="/phantom.svg"
+            alt="Phantom"
+            className="h-4 w-4 object-contain opacity-95"
+            draggable={false}
+          />
         </div>
 
-        {/* chips */}
+        <div className="text-[10px] tracking-widest text-white/60">PHANTOM DEPOSIT</div>
+
         <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
           ONLY
         </span>
@@ -2784,76 +3022,76 @@ return (
       </div>
 
       <div className="mt-2 text-[18px] font-semibold text-white/90">
-      Balance: <span className="tabular-nums">{fmtUsd(realBalanceUsd)}</span>      </div>
+        Bullions balance: <span className="tabular-nums">{fmtUsd(uiBalanceUsd)}</span>
+      </div>
 
       <div className="mt-1 text-[12px] text-white/55">
         Only Phantom is supported. Connect Phantom to credit your internal balance.
       </div>
     </div>
 
-    <div className="shrink-0 rounded-full border border-white/10 bg-black/35 px-3 py-2 text-[11px] tracking-widest text-white/70">
+    <div className="shrink-0 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] tracking-widest text-white/70">
       phantom
     </div>
   </div>
 
-
-{isBullion && realBalanceUsd < 50 ? (
+  {/* CTA (opcional, pero alineado) */}
+  {isBullion && realBalanceUsd < 50 ? (
     <div className="mt-3 rounded-2xl border border-violet-300/25 bg-black/30 px-4 py-3">
-    <div className="text-[12px] text-white/80">
-      <span className="text-violet-200 font-semibold">USE PHANTOM WALLET</span>{" "}
-      <a
-        href="https://phantom.com"
-        target="_blank"
-        rel="noreferrer"
-        className="text-violet-200 underline underline-offset-4 hover:text-violet-100"
-      >
-        to add your first deposit!
-      </a>
+      <div className="text-[12px] text-white/80">
+        <span className="text-violet-200 font-semibold">USE PHANTOM WALLET</span>{" "}
+        <a
+          href="https://phantom.com"
+          target="_blank"
+          rel="noreferrer"
+          className="text-violet-200 underline underline-offset-4 hover:text-violet-100"
+        >
+          to add your first deposit!
+        </a>
+      </div>
     </div>
-  </div>
-) : null}
+  ) : null}
 
+  {/* BODY */}
+  <div className="mt-4">
 
-  {/* BODY (TU COMPONENTE REAL) */}
-
-<div className="mt-3">
   <PhantomDeposit
     network="mainnet-beta"
     minUsd={depositMinUsd}
-    onBalanceCredit={(usdAmount) => {
-      const credit = Math.max(0, Number(usdAmount) || 0)
+    
+    
+   onBalanceCredit={(usdAmount) => {
+  const credit = Math.max(0, Number(usdAmount) || 0)
 
-      // ✅ refresca del backend (Firestore) para que sea “real”
-      const wallet = window.solana?.publicKey?.toBase58?.()
-      if (wallet) refreshBalance(wallet)
+  const wallet = window.solana?.publicKey?.toBase58?.()
+  if (wallet) refreshBalance(wallet)
 
-      // ✅ log UI (opcional)
-      x9("Deposit confirmed ✓", 1)
+  x9("Deposit confirmed ✓", 1)
 
-      // ✅ si quieres historial en UI, aquí SÍ va pushWalletTx
-      if (credit > 0) {
-        pushWalletTx({
-          kind: "DEPOSIT",
-          amountUsd: credit,
-          token: "SOL",
-          status: "CONFIRMED",
-          note: "Deposit credited · Phantom · Solana mainnet",
-        })
-      }
-    }}
+  if (credit > 0) {
+    pushWalletTx({
+      kind: "DEPOSIT",
+      amountUsd: credit,
+      token: "SOL",
+      status: "CONFIRMED",
+      note: "Deposit credited · Phantom · Solana mainnet",
+    })
+  }
+}}
+
   />
 </div>
 
   {/* FOOTER LINE */}
   <div className="mt-3 text-[10px] text-white/40">
-    Credits are internal (casino-style). Confirmed tx → updates dashboard balance.
+    Confirmed tx → updates dashboard balance.
   </div>
 </div>
 
 
-      </div>
     </div>
   </div>
+</div>
 </div>
         </section>
       ) : null}
@@ -2879,6 +3117,7 @@ return (
                 className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] tracking-widest text-white/70 hover:bg-white/5"
               >
                 UPGRADE
+
               </button>
             </div>
 
@@ -3003,8 +3242,6 @@ return (
   backupCount={planBTraderId ? 1 : 0}
   onEnterAssignMode={() => showToast("Plan B mode", "Pick a trader in PLAN B slot")}
 />
-
-
             <StrategyMessages
               selectedTraders={[]}
               connectedTraders={connectedTraders}
@@ -3065,17 +3302,58 @@ return (
       ) : null}
 
       {/* WALLET / SUPPORT aquí si los tienes */}
+
+{tab === "support" && (
+  <section className="rounded-[28px] border border-white/10 bg-black/40 p-6 neon-card">
+    <div className="flex items-center justify-between mb-6">
+      <div>
+        <div className="text-xs tracking-widest text-white/40">
+          BULLPAD CORE
+        </div>
+        <div className="text-lg font-semibold text-white/90">
+          Support Center
+        </div>
+      </div>
+
+      <div className="text-[11px] text-white/50">
+        Build 06.09 · Live Node
+      </div>
     </div>
 
-    <AllocateCapitalModal
-      open={allocOpen}
-      maxUsd={availableUsd}
-      onClose={() => {
-        setAllocOpen(false)
-        setAllocContext(null)
-      }}
-      onConfirm={confirmAllocation}
-    />
+    <div className="space-y-4 text-sm text-white/70">
+      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+        <div className="font-semibold text-white/85 mb-1">
+          General Support
+        </div>
+        <div className="text-white/60">
+          Contact core team for technical or allocation issues.
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+        <div className="font-semibold text-white/85 mb-1">
+          Engine Status
+        </div>
+        <div className="text-emerald-400">
+          ● Operational
+        </div>
+      </div>
+    </div>
+  </section>
+)}
+    
+    </div>
+
+
+<AllocateCapitalModal
+  open={allocOpen}
+  maxUsd={maxUsdForAlloc}
+  onClose={() => {
+    setAllocOpen(false)
+    setAllocContext(null)
+  }}
+  onConfirm={confirmAllocation}
+/>
 
     {diplomaOpen && diploma ? (
       <DiplomaModal
@@ -3258,15 +3536,22 @@ return (
           </div>
 
 {/* ✅ TRANSACTIONS (FUNCIONAL) */}
-<div className="relative mt-4 rounded-[22px] border border-white/10 bg-black/35 p-4">
+<div className="relative mt-6 rounded-[22px] border border-white/10 bg-black/35 p-4">
   <div className="flex items-center justify-between">
-    <div className="text-[10px] tracking-widest text-white/55">TRANSACTIONS</div>
-    <div className="text-[10px] tracking-widest text-white/35">{walletTxsSorted.length}</div>
+    <div className="text-[10px] tracking-widest text-white/55">
+      TRANSACTIONS
+    </div>
+    <div className="text-[10px] tracking-widest text-white/35">
+      {walletTxsSorted.length}
+    </div>
   </div>
 
   <div className="mt-3 space-y-2">
     {walletTxsSorted.slice(0, 6).map(tx => (
-      <div key={tx.id} className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
+      <div
+        key={tx.id}
+        className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -3300,7 +3585,8 @@ return (
             </div>
 
             <div className="mt-2 text-[12px] font-semibold text-white/90 tabular-nums">
-              {tx.kind === "WITHDRAW" ? "-" : "+"}{fmtUsd(tx.amountUsd)}
+              {tx.kind === "WITHDRAW" ? "-" : "+"}
+              {fmtUsd(tx.amountUsd)}
             </div>
           </div>
         </div>
@@ -3338,6 +3624,7 @@ return (
 
               <div className="mt-3">
                 <PhantomDeposit
+              
   network="mainnet-beta"
   minUsd={depositMinUsd}
   onBalanceCredit={(usdAmount) => {
@@ -3359,7 +3646,6 @@ return (
     }
   }}
 />
-
               </div>
 
               <div className="mt-2 text-[10px] text-white/40">
@@ -3430,9 +3716,6 @@ return (
     </div>
   </section>
 ) : null}
-
-
-
   </main>
 )
 
@@ -3449,7 +3732,6 @@ function Toast({ toast }: { toast: { title: string; sub?: string } | null }) {
     </div>
   )
 }
-
 
 /* ================= UI BLOCKS ================= */
 
@@ -3498,6 +3780,8 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 /* ================= LAST EVENTS ================= */
 
 function LastEventsCard({ items }: { items: StrategyEvent[] }) {
+  const recent = Array.isArray(items) ? items.slice(0, 3) : []
+
   return (
     <section className="rounded-3xl border border-white/10 bg-black/45 p-4 neon-card">
       <div className="flex items-center justify-between">
@@ -3509,9 +3793,12 @@ function LastEventsCard({ items }: { items: StrategyEvent[] }) {
       </div>
 
       <div className="mt-3 space-y-2">
-        {items.length ? (
-          items.map(e => (
-            <div key={e.id} className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-[12px] text-white/75">
+        {recent.length ? (
+          recent.map(e => (
+            <div
+              key={e.id}
+              className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-[12px] text-white/75"
+            >
               ▸ {e.label}
             </div>
           ))
@@ -3564,7 +3851,7 @@ function SocialPulseCard({ theme }: { theme: { border: string; glow: string } })
         ))}
       </div>
 
-      <div className="mt-3 text-[10px] text-white/35">Tip: social proof + ops vibe. No controls, solo confianza.</div>
+      <div className="mt-3 text-[10px] text-white/35">Tip: social proof</div>
     </section>
   )
 }
@@ -3901,24 +4188,4 @@ function RowK({ label, value }: { label: string; value: string }) {
       <div className="text-[12px] text-white/85 font-semibold">{value}</div>
     </div>
   )
-}
-
-function demoWithdraw() {
-  // retiro visual, pero lo guardamos como "real event" dentro de tu app
-  const amt = 50 // cámbialo o luego lo haces input
-
-  setWalletTxs(prev => [
-    {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      kind: "WITHDRAW",
-      amountUsd: amt,
-      token: "USDC",
-      ts: Date.now(),
-      status: "PENDING",
-      note: "Withdraw request (visual)",
-    },
-    ...prev,
-  ])
-
-  x9(`Withdraw requested → -${fmtUsd(amt)}`, -1)
 }}

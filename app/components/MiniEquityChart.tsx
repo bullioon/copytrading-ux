@@ -2,64 +2,54 @@
 
 type Point = { x: number; y: number }
 
-export default function MiniEquityChart({
-  equity,
-}: {
-  equity: number[]
-}) {
-  // 1️⃣ Validación extrema
-  if (
-    !Array.isArray(equity) ||
-    equity.length < 2 ||
-    equity.some(v => typeof v !== "number" || !Number.isFinite(v))
-  ) {
+export default function MiniEquityChart({ equity }: { equity: number[] }) {
+  // 1) Normaliza: si hay NaN/undefined, lo reemplazamos por el último valor válido
+  const clean: number[] = []
+  let last = 0
+
+  if (Array.isArray(equity)) {
+    for (let i = 0; i < equity.length; i++) {
+      const v = equity[i]
+      if (typeof v === "number" && Number.isFinite(v)) {
+        last = v
+        clean.push(v)
+      } else {
+        // reemplaza basura por el último bueno
+        clean.push(last)
+      }
+    }
+  }
+
+  // si no hay nada válido, placeholder
+  if (!clean.length) {
     return (
       <div className="h-28 flex items-center justify-center text-xs opacity-40">
-        Waiting for closed trades…
+        Waiting for data…
       </div>
     )
   }
 
-  const min = Math.min(...equity)
-  const max = Math.max(...equity)
+  // 2) Si solo hay 1 punto, dibuja línea flat (2 puntos iguales)
+  const series = clean.length === 1 ? [clean[0], clean[0]] : clean
+
+  const min = Math.min(...series)
+  const max = Math.max(...series)
   const range = max - min || 1
 
-  // 2️⃣ Precalcular puntos de forma SEGURA
   const points: Point[] = []
-
-  for (let i = 0; i < equity.length; i++) {
-    const value = equity[i]
-
-    const x =
-      equity.length === 1
-        ? 0
-        : (i / (equity.length - 1)) * 100
-
-    const y =
-      45 - ((value - min) / range) * 40
-
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      return (
-        <div className="h-28 flex items-center justify-center text-xs opacity-40">
-          Waiting for closed trades…
-        </div>
-      )
-    }
-
+  for (let i = 0; i < series.length; i++) {
+    const value = series[i]
+    const x = series.length === 1 ? 0 : (i / (series.length - 1)) * 100
+    const y = 45 - ((value - min) / range) * 40
     points.push({ x, y })
   }
 
-  // 3️⃣ SVG SOLO SI TODO ES VÁLIDO
+  const pts = points.map(p => `${p.x},${p.y}`).join(" ")
+
   return (
     <svg viewBox="0 0 100 50" className="w-full h-28">
-      <polyline
-        fill="none"
-        stroke="#4ade80"
-        strokeWidth="2"
-        points={points.map(p => `${p.x},${p.y}`).join(" ")}
-      />
+      <polyline fill="none" stroke="#4ade80" strokeWidth="2" points={pts} />
 
-      {/* ❌ SIN CIRCLES = SIN cy NaN */}
       <text x="0" y="48" fontSize="3" fill="#6b7280">
         Start
       </text>

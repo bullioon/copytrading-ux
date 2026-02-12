@@ -26,9 +26,9 @@ export default function BullionsHeader({
     <header
       className={`flex items-center justify-between px-6 py-4 border-b bg-black ${COLOR}`}
     >
-      <span className="text-2xl font-bold tracking-tight">
-        CENTORION
-      </span>
+<h2 className="text-sm tracking-[0.25em] text-white/70">
+  BULLPAD<span className="text-emerald-400 ml-2">V1</span>
+</h2>
 
       <div className="flex items-center gap-6 text-xs font-mono opacity-70">
         <span className="flex items-center gap-2">

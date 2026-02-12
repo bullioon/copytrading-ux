@@ -60,9 +60,9 @@ export function AllocateCapitalModal({ open, maxUsd, onClose, onConfirm }: Props
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[14px] text-white/90 font-semibold">¿Cuánto de tu saldo quieres meter?</div>
+            <div className="text-[14px] text-white/90 font-semibold">¿How much want to add?</div>
             <div className="mt-1 text-[12px] text-white/60">
-              Mínimo: <span className="text-white/85 font-semibold">$50.00</span> · Máximo disponible:{" "}
+              Minimum: <span className="text-white/85 font-semibold">$50.00</span> · Max Available:{" "}
               <span className="text-white/85 font-semibold">{fmtUsd(max)}</span>
             </div>
 
@@ -82,7 +82,7 @@ export function AllocateCapitalModal({ open, maxUsd, onClose, onConfirm }: Props
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
-          <div className="text-[10px] tracking-widest text-white/45">MONTO (USD)</div>
+          <div className="text-[10px] tracking-widest text-white/45">AMOUNT (USD)</div>
 
           <input
             className="mt-2 w-full rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 text-[14px] text-white/90 outline-none focus:border-white/25"
