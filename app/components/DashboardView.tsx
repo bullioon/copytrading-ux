@@ -1785,6 +1785,13 @@ const engine = useTradingEngine({
 
 const { metrics, trades, status } = engine
 
+// ===== BALANCE REAL + PNL GUARDADO (SOURCE OF TRUTH) =====
+const savedPnlUsd = Number.isFinite(savedEnginePnlUsd)
+  ? savedEnginePnlUsd
+  : 0
+
+const totalBalanceUsd = realBalanceUsd + savedPnlUsd
+
 useEffect(() => {
   const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
   if (!wallet) return
@@ -1819,21 +1826,6 @@ useEffect(() => {
   return () => clearInterval(interval)
 }, [])
 
-useEffect(() => {
-  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-  if (!wallet) return
-
-  const pnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
-
-  fetch("/api/wallet/state", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      wallet,
-      enginePnlUsd: pnl,
-    }),
-  }).catch(() => {})
-}, [metrics?.pnl])
 
 /* ================= TOTAL EQUITY (SOURCE OF TRUTH) ================= */
 
@@ -2823,11 +2815,11 @@ const walletBalanceUsd = realBalanceUsd
   <div className="text-[10px] tracking-widest text-white/45">EQUITY</div>
 
   <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
-    {fmtUsd(equityUsd)}
+    {fmtUsd(totalBalanceUsd)}
   </div>
 
   <div className="mt-1 text-[11px] text-white/55">
-    Wallet {fmtUsd(walletBalanceUsd)} · Engine PnL {fmtUsd(enginePnlUsd, { sign: true })}
+    Wallet {fmtUsd(realBalanceUsd)} · Saved PnL {fmtUsd(savedPnlUsd, { sign: true })}
   </div>
 </div>
 
