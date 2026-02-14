@@ -1248,7 +1248,7 @@ function pnlKey(wallet: string) {
 
 async function refreshBalance(wallet: string) {
   try {
-    const r = await fetch(`/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" })
+    const r = await fetch(`/api/wallet/pnl?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" })
     const j = await r.json()
     if (j?.ok) {
       setRealBalanceUsd(Number(j.balanceUsd || 0))
@@ -1786,7 +1786,7 @@ useEffect(() => {
 
   const pnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
 
-  fetch("/api/wallet/state", {
+  fetch("/api/wallet/pnl", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2787,7 +2787,7 @@ const walletBalanceUsd = realBalanceUsd
             <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
 {fmtUsd(equityUsd)}
             </div>
-            <div className="mt-1 text-[11px] text-white/55">Wallet {fmtUsd(equityUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}            </div>
+            <div className="mt-1 text-[11px] text-white/55">Wallet {fmtUsd(walletBalanceUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}            </div>
           </div>
 
 {process.env.NODE_ENV !== "production" ? (
