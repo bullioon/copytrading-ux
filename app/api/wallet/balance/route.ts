@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server"
 import { db } from "@/lib/firebaseAdmin"
 
@@ -16,14 +15,30 @@ export async function GET(req: Request) {
     const snap = await db.collection("users").doc(wallet).get()
     const data = snap.exists ? (snap.data() as any) : null
 
-    const balanceUsdRaw = Number(data?.balanceUsd ?? 0)
-    const balanceUsd = Number.isFinite(balanceUsdRaw) ? balanceUsdRaw : 0
+    const balanceUsd = Number(data?.balanceUsd ?? 0)
+    const enginePnlUsd = Number(data?.enginePnlUsd ?? 0)
 
-    return NextResponse.json({ ok: true, wallet, balanceUsd }, { status: 200 })
+    const safeBalance = Number.isFinite(balanceUsd) ? balanceUsd : 0
+    const safePnl = Number.isFinite(enginePnlUsd) ? enginePnlUsd : 0
+
+    const totalBalanceUsd = safeBalance + safePnl
+
+    return NextResponse.json(
+      {
+        ok: true,
+        wallet,
+        balanceUsd: totalBalanceUsd,
+        rawBalanceUsd: safeBalance,
+        enginePnlUsd: safePnl,
+      },
+      { status: 200 }
+    )
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 })
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Unknown error" },
+      { status: 500 }
+    )
   }
 }
 
-// 👇 esto evita el error “is not a module” si por alguna razón TS lo interpreta como script
 export {}
