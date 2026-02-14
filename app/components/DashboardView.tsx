@@ -3055,31 +3055,28 @@ onRequestDisableProtections={() => {
   {/* BODY */}
   <div className="mt-4">
 
-  <PhantomDeposit
-    network="mainnet-beta"
-    minUsd={depositMinUsd}
-    
-    
-   onBalanceCredit={(usdAmount) => {
-  const credit = Math.max(0, Number(usdAmount) || 0)
+<PhantomDeposit
+  network="mainnet-beta"
+  minUsd={depositMinUsd}
+  onBalanceCredit={(usdAmount, meta) => {
+    const credit = Math.max(0, Number(usdAmount) || 0)
 
-  const wallet = window.solana?.publicKey?.toBase58?.()
-  if (wallet) refreshBalance(wallet)
+    const wallet = meta?.publicKey
+    if (wallet) refreshBalance(wallet)
 
-  x9("Deposit confirmed ✓", 1)
+    x9("Deposit confirmed ✓", 1)
 
-  if (credit > 0) {
-    pushWalletTx({
-      kind: "DEPOSIT",
-      amountUsd: credit,
-      token: "SOL",
-      status: "CONFIRMED",
-      note: "Deposit credited · Phantom · Solana mainnet",
-    })
-  }
-}}
-
-  />
+    if (credit > 0) {
+      pushWalletTx({
+        kind: "DEPOSIT",
+        amountUsd: credit,
+        token: "SOL",
+        status: "CONFIRMED",
+        note: "Deposit credited · Phantom · Solana mainnet",
+      })
+    }
+  }}
+/>
 </div>
 
   {/* FOOTER LINE */}
