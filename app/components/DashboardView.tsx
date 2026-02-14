@@ -1225,19 +1225,40 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
 
 
 const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
+const [savedEnginePnlUsd, setSavedEnginePnlUsd] = useState<number>(0)
+
+
+
+// ===== PNL PERSIST (LOCALSTORAGE) =====
+const [persistedPnlUsd, setPersistedPnlUsd] = useState<number>(0)
+
+function getWalletBase58(): string {
+  try {
+    return (window as any)?.solana?.publicKey?.toBase58?.() || ""
+  } catch {
+    return ""
+  }
+}
+
+
+
+function pnlKey(wallet: string) {
+  return `pnlUsd:${wallet}`
+}
 
 async function refreshBalance(wallet: string) {
   try {
-    const r = await fetch(
-      `/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`,
-      { cache: "no-store" }
-    )
+    const r = await fetch(`/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" })
     const j = await r.json()
-    if (j?.ok) setRealBalanceUsd(Number(j.balanceUsd || 0))
+    if (j?.ok) {
+      setRealBalanceUsd(Number(j.balanceUsd || 0))
+      setSavedEnginePnlUsd(Number(j.enginePnlUsd || 0))
+    }
   } catch (e) {
     console.error("refreshBalance failed", e)
   }
 }
+
 
 /* 👇👇👇 PEGA ESTO JUSTO AQUÍ 👇👇👇 */
 
@@ -1259,8 +1280,16 @@ useEffect(() => {
 /* 👆👆👆 AQUÍ TERMINA 👆👆👆 */
 
 
-const walletBalanceUsd = realBalanceUsd
+useEffect(() => {
+  const w = getWalletBase58()
+  if (!w) return
+  const raw = localStorage.getItem(pnlKey(w))
+  const v = Number(raw ?? 0)
+  setPersistedPnlUsd(Number.isFinite(v) ? v : 0)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
 
+const walletBalanceUsd = realBalanceUsd
 
   useEffect(() => {
   console.log("[BALANCE] realBalanceUsd =", realBalanceUsd)
@@ -1751,6 +1780,21 @@ const engine = useTradingEngine({
 
 const { metrics, trades, status } = engine
 
+useEffect(() => {
+  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+  if (!wallet) return
+
+  const pnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
+
+  fetch("/api/wallet/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      wallet,
+      enginePnlUsd: pnl,
+    }),
+  }).catch(() => {})
+}, [metrics?.pnl])
 
 /* ================= TOTAL EQUITY (SOURCE OF TRUTH) ================= */
 
@@ -1929,6 +1973,18 @@ const hasRealFunds = walletRealUsd > 0
 
 // pnl seguro
 const safePnl = Number.isFinite(metrics?.pnl) ? Number(metrics?.pnl) : 0
+
+useEffect(() => {
+  const w = getWalletBase58()
+  if (!w) return
+
+  // solo persiste si es número válido
+  if (Number.isFinite(safePnl)) {
+    setPersistedPnlUsd(safePnl)
+    localStorage.setItem(pnlKey(w), String(safePnl))
+  }
+  // IMPORTANTE: si tu flag se llama diferente a run.active, cámbialo aquí
+}, [safePnl])
 
 // total wallet mostrado (wallet + pnl) si ya hay fondos
 const walletTotalUsd = hasRealFunds
@@ -2671,7 +2727,18 @@ const waiting =
 
 // ================= LITE MODE (QUERY FLAG) =================
 if (lite) {
-  const equityLite = realBalanceUsd + enginePnl
+
+const walletBalanceUsd = realBalanceUsd
+
+  const livePnl = Number.isFinite(metrics?.pnl)
+    ? Number(metrics!.pnl)
+    : 0
+
+  const enginePnlUsd = livePnl !== 0
+    ? livePnl
+    : savedEnginePnlUsd
+
+  const equityLite = walletBalanceUsd + enginePnlUsd
 
   return (
     <main className={`min-h-screen bg-black font-mono ${theme.text} pb-28`}>
@@ -2710,13 +2777,17 @@ if (lite) {
             </div>
           </div>
 
+
+
           {/* BIG METRIC */}
+
+          
           <div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
             <div className="text-[10px] tracking-widest text-white/45">EQUITY</div>
             <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
-              {fmtUsd(equityLite)}
+{fmtUsd(equityUsd)}
             </div>
-            <div className="mt-1 text-[11px] text-white/55">Wallet {fmtUsd(realBalanceUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}            </div>
+            <div className="mt-1 text-[11px] text-white/55">Wallet {fmtUsd(equityUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}            </div>
           </div>
 
 {process.env.NODE_ENV !== "production" ? (
