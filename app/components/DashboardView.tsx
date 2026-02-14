@@ -1246,16 +1246,20 @@ function pnlKey(wallet: string) {
   return `pnlUsd:${wallet}`
 }
 
-async function refreshBalance(wallet: string) {
+async function refreshAll(wallet: string) {
   try {
-    const r = await fetch(`/api/wallet/pnl?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" })
-    const j = await r.json()
-    if (j?.ok) {
-      setRealBalanceUsd(Number(j.balanceUsd || 0))
-      setSavedEnginePnlUsd(Number(j.enginePnlUsd || 0))
-    }
+    const [balRes, pnlRes] = await Promise.all([
+      fetch(`/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" }),
+      fetch(`/api/wallet/pnl?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" }),
+    ])
+
+    const balJson = await balRes.json()
+    const pnlJson = await pnlRes.json()
+
+    if (balJson?.ok) setRealBalanceUsd(Number(balJson.balanceUsd || 0))
+    if (pnlJson?.ok) setSavedEnginePnlUsd(Number(pnlJson.enginePnlUsd || 0))
   } catch (e) {
-    console.error("refreshBalance failed", e)
+    console.error("refreshAll failed", e)
   }
 }
 
@@ -1268,13 +1272,14 @@ useEffect(() => {
     tries++
     const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
     if (wallet) {
-      refreshBalance(wallet)
+      refreshAll(wallet)
       clearInterval(t)
     }
-    if (tries >= 10) clearInterval(t)
+    if (tries >= 10) clearInterval(t) // ~2s
   }, 200)
 
   return () => clearInterval(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [])
 
 /* 👆👆👆 AQUÍ TERMINA 👆👆👆 */
@@ -1786,7 +1791,41 @@ useEffect(() => {
 
   const pnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
 
+  // guarda en Firestore
   fetch("/api/wallet/pnl", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wallet, enginePnlUsd: pnl }),
+  }).catch(() => {})
+
+  // y también actualiza el state local (para que la UI no brinque)
+  setSavedEnginePnlUsd(pnl)
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [metrics?.pnl])
+useEffect(() => {
+  let interval: any
+
+  function tryLoad() {
+    const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+    if (!wallet) return
+
+    refreshAll(wallet)
+    clearInterval(interval)
+  }
+
+  interval = setInterval(tryLoad, 300)
+
+  return () => clearInterval(interval)
+}, [])
+
+useEffect(() => {
+  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+  if (!wallet) return
+
+  const pnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
+
+  fetch("/api/wallet/state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2730,9 +2769,9 @@ if (lite) {
 
 const walletBalanceUsd = realBalanceUsd
 
-  const livePnl = Number.isFinite(metrics?.pnl)
-    ? Number(metrics!.pnl)
-    : 0
+ const livePnl = Number.isFinite(metrics?.pnl)
+  ? Number(metrics!.pnl)
+  : savedEnginePnlUsd
 
   const enginePnlUsd = livePnl !== 0
     ? livePnl
@@ -2779,20 +2818,23 @@ const walletBalanceUsd = realBalanceUsd
 
 
 
-          {/* BIG METRIC */}
+{/* BIG METRIC */}
+<div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
+  <div className="text-[10px] tracking-widest text-white/45">EQUITY</div>
 
-          
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/35 p-4">
-            <div className="text-[10px] tracking-widest text-white/45">EQUITY</div>
-            <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
-{fmtUsd(equityUsd)}
-            </div>
-            <div className="mt-1 text-[11px] text-white/55">Wallet {fmtUsd(walletBalanceUsd)} · Engine PnL {fmtUsd(enginePnl, { sign: true })}            </div>
-          </div>
+  <div className="mt-2 text-2xl font-semibold tracking-tight text-white/95 tabular-nums">
+    {fmtUsd(equityUsd)}
+  </div>
+
+  <div className="mt-1 text-[11px] text-white/55">
+    Wallet {fmtUsd(walletBalanceUsd)} · Engine PnL {fmtUsd(enginePnlUsd, { sign: true })}
+  </div>
+</div>
 
 {process.env.NODE_ENV !== "production" ? (
   <div className="text-[10px] text-white/40">
-   equity len: {equityBuffer.length} · last: {String(equityBuffer[equityBuffer.length - 1])}
+    equity len: {equityBuffer.length} · last:{" "}
+    {String(equityBuffer[equityBuffer.length - 1])}
   </div>
 ) : null}
 
@@ -3144,7 +3186,7 @@ onRequestDisableProtections={() => {
     const credit = Math.max(0, Number(usdAmount) || 0)
 
     const wallet = meta?.publicKey
-    if (wallet) refreshBalance(wallet)
+    if (wallet) refreshAll(wallet)
 
     x9("Deposit confirmed ✓", 1)
 
@@ -3710,7 +3752,7 @@ onRequestDisableProtections={() => {
     const credit = Math.max(0, Number(usdAmount) || 0)
 
     const wallet = window.solana?.publicKey?.toBase58?.()
-    if (wallet) refreshBalance(wallet)
+    if (wallet) refreshAll(wallet)
 
     x9("Deposit confirmed ✓", 1)
 
