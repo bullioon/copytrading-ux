@@ -1224,28 +1224,39 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
   const [tf, setTf] = useState<"H" | "D" | "M">("H")
 
 
-  // ✅ STATE SIEMPRE ADENTRO DEL COMPONENTE
-  const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
+const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
 
-  async function refreshBalance(wallet: string) {
-    try {
-      const r = await fetch(
-        `/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`,
-        { cache: "no-store" }
-      )
-      const j = await r.json()
-      if (j?.ok) setRealBalanceUsd(Number(j.balanceUsd || 0))
-    } catch (e) {
-      console.error("refreshBalance failed", e)
-    }
+async function refreshBalance(wallet: string) {
+  try {
+    const r = await fetch(
+      `/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`,
+      { cache: "no-store" }
+    )
+    const j = await r.json()
+    if (j?.ok) setRealBalanceUsd(Number(j.balanceUsd || 0))
+  } catch (e) {
+    console.error("refreshBalance failed", e)
   }
+}
 
-  useEffect(() => {
+/* 👇👇👇 PEGA ESTO JUSTO AQUÍ 👇👇👇 */
+
+useEffect(() => {
+  let tries = 0
+  const t = setInterval(() => {
+    tries++
     const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-    if (!wallet) return
-    refreshBalance(wallet)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (wallet) {
+      refreshBalance(wallet)
+      clearInterval(t)
+    }
+    if (tries >= 10) clearInterval(t)
+  }, 200)
+
+  return () => clearInterval(t)
+}, [])
+
+/* 👆👆👆 AQUÍ TERMINA 👆👆👆 */
 
 
 const walletBalanceUsd = realBalanceUsd
