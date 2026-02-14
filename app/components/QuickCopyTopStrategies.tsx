@@ -4,17 +4,13 @@ import React, { useMemo } from "react"
 
 export type StartupPresetId = "SAFE_COPY" | "BALANCED_COPY" | "AGGRO_COPY"
 
-function fmtTime(sec: number) {
-  const s = Math.max(0, Math.floor(sec))
-  const m = Math.floor(s / 60)
+function fmtDuration(sec: number) {
+  const s = Math.max(0, Math.floor(sec || 0))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
   const r = s % 60
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`
-}
-
-type Signals = {
-  drawdownPct: number
-  lossStreak: number
-  equityFlatMs: number
 }
 
 export default function QuickCopyTopStrategies({
@@ -23,19 +19,15 @@ export default function QuickCopyTopStrategies({
   enabled,
   hint,
   onPick,
+  onSpecialCta,
 
-  // ✅ RUN
   runActive,
   runPresetId,
   runRemainingSec,
   onStop,
 
-  // ✅ UI state
   starting,
-
-  // ✅ SPECIAL CTA
   specialHot,
-  onSpecialCta,
   signals,
 }: {
   borderClass: string
@@ -43,6 +35,7 @@ export default function QuickCopyTopStrategies({
   enabled: boolean
   hint?: string
   onPick: (id: StartupPresetId) => void
+  onSpecialCta: () => void
 
   runActive: boolean
   runPresetId: StartupPresetId | null
@@ -50,53 +43,50 @@ export default function QuickCopyTopStrategies({
   onStop: () => void
 
   starting: boolean
-
   specialHot: boolean
-  onSpecialCta: () => void
-  signals: Signals
+  signals: { drawdownPct: number; lossStreak: number; equityFlatMs: number }
 }) {
-  const timeLeft = useMemo(() => fmtTime(runRemainingSec), [runRemainingSec])
+  const timeLeft = useMemo(() => fmtDuration(runRemainingSec), [runRemainingSec])
+
+  // Duración “bonita” por preset para barra
+  const totalSec = useMemo(() => {
+    if (!runPresetId) return 0
+    if (runPresetId === "SAFE_COPY") return 24 * 60 * 60
+    if (runPresetId === "BALANCED_COPY") return 3 * 24 * 60 * 60
+    return 7 * 24 * 60 * 60
+  }, [runPresetId])
 
   const progressPct = useMemo(() => {
-    // si no tienes duration total aquí, solo animamos una barrita “viva”
-    // cuando corre; cuando no corre => 0
-    return runActive ? 100 : 0
-  }, [runActive])
+    if (!runActive || !totalSec) return 0
+    const elapsed = Math.max(0, totalSec - Math.max(0, runRemainingSec))
+    return Math.max(0, Math.min(100, (elapsed / totalSec) * 100))
+  }, [runActive, totalSec, runRemainingSec])
 
   const progressLabel = useMemo(() => {
-    return runActive ? timeLeft : ""
-  }, [runActive, timeLeft])
+    if (!runActive || !totalSec) return ""
+    return `${Math.round(progressPct)}%`
+  }, [runActive, totalSec, progressPct])
 
-  const renderPresetButton = (id: StartupPresetId) => {
-    const label =
-      id === "SAFE_COPY" ? "SAFE COPY" : id === "BALANCED_COPY" ? "BALANCED" : "AGGRO"
+  const disabledAll = !enabled || runActive || starting
 
-    const sub =
-      id === "SAFE_COPY"
-        ? "RISK only · tighter limits"
-        : id === "BALANCED_COPY"
-          ? "ENTRY + RISK · recommended"
-          : "ENTRY + EXIT · higher variance"
-
-    return (
-      <button
-        key={id}
-        type="button"
-        disabled={!enabled || runActive || starting}
-        onClick={() => {
-          if (!enabled || runActive || starting) return
-          onPick(id)
-        }}
-        className={[
-          "w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-left hover:bg-white/10 transition",
-          (!enabled || runActive || starting) ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-        ].join(" ")}
-      >
-        <div className="text-[12px] font-semibold tracking-widest text-white/95">{label}</div>
-        <div className="mt-1 text-[11px] text-white/70">{sub}</div>
-      </button>
-    )
-  }
+  const renderPreset = (id: StartupPresetId, title: string, sub: string) => (
+    <button
+      type="button"
+      disabled={disabledAll}
+      onClick={() => {
+        if (disabledAll) return
+        onPick(id)
+      }}
+      className={[
+        "w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-left transition",
+        disabledAll ? "opacity-50 cursor-not-allowed" : "hover:bg-white/10",
+        id === "BALANCED_COPY" && specialHot ? "ring-1 ring-rose-300/30 animate-pulse" : "",
+      ].join(" ")}
+    >
+      <div className="text-[12px] font-semibold tracking-widest text-white/95">{title}</div>
+      <div className="mt-1 text-[11px] text-white/70">{sub}</div>
+    </button>
+  )
 
   return (
     <section
@@ -107,11 +97,15 @@ export default function QuickCopyTopStrategies({
           "radial-gradient(900px 260px at 10% 0%, rgba(34,211,238,0.16), rgba(168,85,247,0.14), rgba(0,0,0,0.55))",
       }}
     >
-      {/* PROGRESS BAR (TOP) */}
+      {/* PROGRESS BAR */}
       <div className="mb-3">
         <div className="flex items-center justify-between">
-          <div className="text-[10px] tracking-widest text-white/45">{runActive ? "RUN WINDOW" : "STANDBY"}</div>
-          <div className="text-[10px] tracking-widest text-white/55 tabular-nums">{runActive ? progressLabel : ""}</div>
+          <div className="text-[10px] tracking-widest text-white/45">
+            {runActive ? "RUN WINDOW" : "STANDBY"}
+          </div>
+          <div className="text-[10px] tracking-widest text-white/55 tabular-nums">
+            {runActive ? progressLabel : ""}
+          </div>
         </div>
 
         <div className="mt-2 h-2 w-full overflow-hidden rounded-full border border-white/10 bg-black/35">
@@ -128,87 +122,79 @@ export default function QuickCopyTopStrategies({
         </div>
       </div>
 
+      {/* HEADER */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] tracking-widest text-white/60">STARTUP PRESETS · LIMITED WINDOWS</div>
+          <div className="text-[10px] tracking-widest text-white/60">STARTUP PRESETS</div>
 
           {!runActive ? (
-            <div className="mt-1 text-[12px] text-white/70">Pick a style → we auto-assign roles + apply.</div>
+            <div className="mt-1 text-[12px] text-white/70">
+              Pick a style → allocation modal → start.
+            </div>
           ) : (
             <div className="mt-1 text-[12px] text-white/70">
-              Running{" "}
-              <span className="text-white/95 font-semibold">
-                {String(runPresetId ?? "").replaceAll("_", " ")}
-              </span>{" "}
-              · Remaining <span className="text-white/95 font-semibold tabular-nums">{timeLeft}</span>
+              Running <span className="text-white/95 font-semibold">{String(runPresetId).replaceAll("_", " ")}</span> ·
+              Remaining <span className="text-white/95 font-semibold tabular-nums">{timeLeft}</span>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {runActive ? (
-            <button
-              type="button"
-              onClick={onStop}
-              className="rounded-2xl border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-[11px] font-semibold tracking-widest text-rose-100 hover:bg-rose-300/15"
-            >
-              STOP
-            </button>
-          ) : (
-            <div className="rounded-2xl border border-white/15 bg-white/5 px-3 py-2">
-              <div className="text-[10px] tracking-widest text-white/60">MODE</div>
-              <div className="mt-1 text-[11px] text-white/90 font-semibold">QUICK</div>
-            </div>
-          )}
-        </div>
+        {runActive ? (
+          <button
+            type="button"
+            onClick={onStop}
+            className="rounded-2xl border border-rose-300/25 bg-rose-300/10 px-3 py-2 text-[11px] font-semibold tracking-widest text-rose-100 hover:bg-rose-300/15"
+          >
+            STOP
+          </button>
+        ) : (
+          <div className="rounded-2xl border border-white/15 bg-white/5 px-3 py-2">
+            <div className="text-[10px] tracking-widest text-white/60">MODE</div>
+            <div className="mt-1 text-[11px] text-white/90 font-semibold">QUICK</div>
+          </div>
+        )}
       </div>
 
+      {/* DISABLED HINT */}
       {!enabled ? (
         <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-400/10 p-3">
-          <div className="text-[11px] text-rose-100/90">{hint ?? "No traders available — connect one to execute."}</div>
+          <div className="text-[11px] text-rose-100/90">{hint ?? "Disabled"}</div>
         </div>
       ) : null}
 
+      {/* SPECIAL CTA */}
       {specialHot ? (
         <button
           type="button"
-          disabled={!enabled || runActive || starting}
+          disabled={disabledAll}
           onClick={() => {
-            if (!enabled || runActive || starting) return
+            if (disabledAll) return
             onSpecialCta()
           }}
           className={[
-            "mt-3 w-full text-left rounded-2xl border px-4 py-3 transition panel-pop",
+            "mt-3 w-full text-left rounded-2xl border px-4 py-3 transition",
             "border-rose-300/25 bg-rose-300/10 hover:bg-rose-300/15",
-            (!enabled || runActive || starting) ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+            disabledAll ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
           ].join(" ")}
           style={{ boxShadow: `0 0 26px ${glow}` }}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[10px] tracking-widest text-rose-100/80">SPECIAL WINDOW · RECOVERY ACCESS</div>
-              <div className="mt-1 text-[12px] text-white/90 font-semibold">Tap to run BALANCED now (recommended).</div>
-              <div className="mt-1 text-[10px] text-white/55">
-                dd {signals.drawdownPct}% · streak {signals.lossStreak} · flat {(signals.equityFlatMs / 1000).toFixed(0)}s
-              </div>
-            </div>
-
-            <div className="shrink-0 flex items-center gap-2">
-              <div className="rounded-xl border border-rose-300/25 bg-rose-300/15 px-3 py-2 text-[10px] tracking-widest text-rose-100 animate-pulse">
-                LIVE
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-[10px] tracking-widest text-white/80">
-                RUN →
-              </div>
-            </div>
+          <div className="text-[10px] tracking-widest text-rose-100/80">SPECIAL WINDOW</div>
+          <div className="mt-1 text-[12px] text-white/90 font-semibold">Run BALANCED now (recommended)</div>
+          <div className="mt-1 text-[10px] text-white/55">
+            dd {signals.drawdownPct}% · streak {signals.lossStreak} · flat {(signals.equityFlatMs / 1000).toFixed(0)}s
           </div>
         </button>
       ) : null}
 
+      {/* BUTTONS */}
       <div className="mt-3 space-y-2">
-        {renderPresetButton("SAFE_COPY")}
-        {renderPresetButton("BALANCED_COPY")}
-        {renderPresetButton("AGGRO_COPY")}
+        {renderPreset("SAFE_COPY", "SAFE COPY", "Low variance · tight DD guard")}
+        {renderPreset(
+          "BALANCED_COPY",
+          specialHot ? "RECOVERY ACCESS" : "BALANCED",
+          specialHot ? "Recovery window · fast attempt" : "Fast entry · controlled risk"
+        )}
+        {renderPreset("AGGRO_COPY", "AGGRO", "High vol · aggressive timing")}
       </div>
 
       <div className="mt-3 text-[10px] text-white/45">

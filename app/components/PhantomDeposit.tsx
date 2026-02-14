@@ -211,36 +211,47 @@ export default function PhantomDeposit({
       // 3) confirm on-chain
       await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed")
 
-      // 4) ✅ confirm/credit en backend (Firebase)
-      const confirmRes = await fetch("/api/deposit/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          signature,
-          publicKey: pubkey, // MVP (luego lo endurecemos)
-        }),
-      })
+// 4) ✅ credit en backend (Firebase)
+const usdAmountClient = Number.isFinite(solUsdLive) && solUsdLive > 0
+  ? Number((amount * solUsdLive).toFixed(2))
+  : 0
 
-      const confirmJson = await confirmRes.json()
+if (!(usdAmountClient > 0)) {
+  throw new Error("SOL/USD price not ready to credit deposit")
+}
 
-      if (!confirmRes.ok || !confirmJson?.ok) {
-        throw new Error(confirmJson?.error || "Failed to confirm/credit deposit")
-      }
+const confirmRes = await fetch("/api/deposit/confirm", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    wallet: pubkey,              // ✅ lo que tu route espera
+    amountUsd: usdAmountClient,  // ✅ lo que tu route espera
+    depositId: signature,        // ✅ idempotencia real
+    token: "SOL",
+    status: "CONFIRMED",
+    note: "Deposit · Phantom",
+    blockTime: Math.floor(Date.now() / 1000), // número (segundos)
+  }),
+})
 
-      // backend manda los valores oficiales
-      const usdAmount = Number(confirmJson?.usd ?? 0)
-      const solUsd = Number(confirmJson?.solUsd ?? 0)
+const confirmJson = await confirmRes.json()
+if (!confirmRes.ok || !confirmJson?.ok) {
+  throw new Error(confirmJson?.error || "Failed to confirm/credit deposit")
+}
 
-      const meta = {
-        signature,
-        sol: Number(confirmJson?.sol ?? amount),
-        publicKey: pubkey,
-        network,
-        solUsd,
-      }
+const usdAmount = Number(confirmJson?.amountUsd ?? confirmJson?.usd ?? 0) || 0
+const solUsd = Number(confirmJson?.solUsd ?? solUsdLive) || solUsdLive
 
-      onConfirmed?.(usdAmount, meta)
-      onBalanceCredit?.(usdAmount, meta)
+const meta = {
+  signature,
+  sol: amount,
+  publicKey: pubkey,
+  network,
+  solUsd,
+}
+
+onConfirmed?.(usdAmount, meta)
+onBalanceCredit?.(usdAmount, meta)
 
       setOkMsg(`Confirmed: ${fmt(amount, 4)} SOL`)
     } catch (e: any) {
