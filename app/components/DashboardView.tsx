@@ -1211,6 +1211,10 @@ function shuffle<T>(a: T[]) {
 export default function DashboardView({ account: walletAccount }: { account: Account }) {
   const router = useRouter()
 
+  // ================= ANTI-SPAM GUARDS =================
+ // evita refreshAll en paralelo
+const lastCreditSigRef = useRef<string>("")   // dedupe de onBalanceCredit por signature
+
   const [drops, setDrops] = useState(() => shuffle(DROPS).slice(0, 3))
 
     useEffect(() => {
@@ -1227,6 +1231,50 @@ export default function DashboardView({ account: walletAccount }: { account: Acc
 const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
 const [savedEnginePnlUsd, setSavedEnginePnlUsd] = useState<number>(0)
 
+// ===== WALLET CONTROL =====
+const [walletHydrated, setWalletHydrated] = useState(false)
+const refreshBusyRef = useRef(false)
+const didBootRefreshRef = useRef(false)
+
+function getWalletKey() {
+  return (window as any)?.solana?.publicKey?.toBase58?.() as string | undefined
+}
+
+async function refreshAll(wallet: string) {
+  if (!wallet) return
+  if (refreshBusyRef.current) return
+  refreshBusyRef.current = true
+
+  try {
+    const [balRes, pnlRes] = await Promise.all([
+      fetch(`/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" }),
+      fetch(`/api/wallet/pnl?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" }),
+    ])
+
+    const balJson = await balRes.json().catch(() => null)
+    const pnlJson = await pnlRes.json().catch(() => null)
+
+    if (balJson?.ok) setRealBalanceUsd(Number(balJson.balanceUsd || 0))
+    if (pnlJson?.ok) setSavedEnginePnlUsd(Number(pnlJson.enginePnlUsd || 0))
+
+    setWalletHydrated(true)
+  } catch (e) {
+    console.error("refreshAll failed", e)
+  } finally {
+    refreshBusyRef.current = false
+  }
+}
+
+useEffect(() => {
+  if (didBootRefreshRef.current) return
+  didBootRefreshRef.current = true
+
+  const w = getWalletKey()
+  if (!w) return
+
+  refreshAll(w)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
 
 // ✅ source-of-truth wallet (una sola vez)
 const [walletPk, setWalletPk] = useState<string>("")
@@ -1245,23 +1293,6 @@ useEffect(() => {
   }, 200)
   return () => clearInterval(t)
 }, [])
-
-async function refreshAll(wallet: string) {
-  try {
-    const [balRes, pnlRes] = await Promise.all([
-      fetch(`/api/wallet/balance?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" }),
-      fetch(`/api/wallet/pnl?wallet=${encodeURIComponent(wallet)}`, { cache: "no-store" }),
-    ])
-
-    const balJson = await balRes.json()
-    const pnlJson = await pnlRes.json()
-
-    if (balJson?.ok) setRealBalanceUsd(Number(balJson.balanceUsd || 0))
-    if (pnlJson?.ok) setSavedEnginePnlUsd(Number(pnlJson.enginePnlUsd || 0))
-  } catch (e) {
-    console.error("refreshAll failed", e)
-  }
-}
 
 // ✅ Carga Firestore SIEMPRE que ya exista walletPk
 useEffect(() => {
@@ -1765,11 +1796,31 @@ const walletAddress =
   typeof window !== "undefined"
     ? (window as any)?.solana?.publicKey?.toBase58?.() ?? ""
     : ""
+// ===== BALANCE REAL + PNL (SOURCE OF TRUTH / NO SPAM) =====
 
-// ===== BALANCE REAL + PNL GUARDADO (SOURCE OF TRUTH) =====
-const savedPnlUsd = Number.isFinite(savedEnginePnlUsd) ? savedEnginePnlUsd : 0
-const totalBalanceUsd = realBalanceUsd + savedPnlUsd
+// ✅ live pnl: SOLO cuando run.active (deps: SOLO pnl, NO metrics completo)
+const livePnlUsd = useMemo(() => {
+  if (!run.active) return 0
+  const v = (metrics as any)?.pnl
+  return Number.isFinite(v) ? Number(v) : 0
+}, [run.active, (metrics as any)?.pnl])
 
+// ✅ saved pnl: lo que guardaste (Firestore/API)
+const savedPnlUsd = useMemo(() => {
+  const v = savedEnginePnlUsd
+  return Number.isFinite(v) ? Number(v) : 0
+}, [savedEnginePnlUsd])
+
+// ✅ pnl mostrado en UI: live si está corriendo, si no saved
+const pnlUsdForUi = run.active ? livePnlUsd : savedPnlUsd
+
+// ✅ TOTAL BALANCE (para Lite / displays): wallet + pnl (live/saved)
+const totalBalanceUsd = useMemo(() => {
+  const base = Number.isFinite(realBalanceUsd) ? Number(realBalanceUsd) : 0
+  return base + pnlUsdForUi
+}, [realBalanceUsd, pnlUsdForUi])
+
+// ===== SAVE PNL AL DETENER RUN (ACTIVE -> OFF) =====
 const prevRunActiveRef = useRef(false)
 
 useEffect(() => {
@@ -1777,50 +1828,45 @@ useEffect(() => {
   const wasActive = prevRunActiveRef.current
   prevRunActiveRef.current = isNowActive
 
-  // Solo cuando pasa de ACTIVE -> OFF (se detuvo)
+  // ✅ Solo cuando pasa de ACTIVE -> OFF
   if (!(wasActive && !isNowActive)) return
-
-  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-  if (!wallet) return
 
   const raw = (metrics as any)?.pnl
   if (!Number.isFinite(raw)) return
 
   const pnl = Number(raw)
+  setSavedEnginePnlUsd(pnl)
 
+  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+  if (!wallet) return
+
+  // ✅ Persistir en backend (recomendado)
   fetch("/api/wallet/pnl", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallet, enginePnlUsd: pnl }),
   }).catch(() => {})
-
-  setSavedEnginePnlUsd(pnl)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [run?.active])
+}, [run?.active, (metrics as any)?.pnl])
 
 /* ================= TOTAL EQUITY (SOURCE OF TRUTH) ================= */
 
-// PnL del engine SOLO cuenta cuando run.active
-const enginePnlUsd = useMemo(() => {
-  if (!run.active) return 0
-  const v = (metrics as any)?.pnl
-  return Number.isFinite(v) ? Number(v) : 0
-}, [run.active, (metrics as any)?.pnl])
+// ✅ PnL del engine SOLO cuenta cuando run.active
+const enginePnlUsd = livePnlUsd
 
-// TOTAL EQUITY real: wallet + pnl si aplica
+// ✅ TOTAL EQUITY real: wallet + pnl live (si run.active)
 const totalEquityUsd = useMemo(() => {
   const base = Number.isFinite(realBalanceUsd as any) ? Number(realBalanceUsd) : 0
   return base + enginePnlUsd
 }, [realBalanceUsd, enginePnlUsd])
 
-// UI balance principal del DASH:
-// - si run.active: allocated + pnl
-// - si NO: wallet total
+// ✅ UI balance principal del DASH:
+// - si run.active: allocated + pnl live
+// - si NO: wallet + savedPnL (totalBalanceUsd)
 const uiBalanceUsd = useMemo(() => {
-  if (!run.active) return totalEquityUsd
+  if (!run.active) return totalBalanceUsd
   const alloc = Number.isFinite(allocatedUsd as any) ? Number(allocatedUsd) : 0
   return alloc + enginePnlUsd
-}, [run.active, totalEquityUsd, allocatedUsd, enginePnlUsd])
+}, [run.active, totalBalanceUsd, allocatedUsd, enginePnlUsd])
 
 /* ===== AVAILABLE FOR ALLOCATION (FROM TOTAL EQUITY) ===== */
 const availableUsd = useMemo(() => {
@@ -1829,24 +1875,20 @@ const availableUsd = useMemo(() => {
   return Math.max(0, Number.isFinite(raw as any) ? Number(raw) : 0)
 }, [run.active, totalEquityUsd, allocatedUsd])
 
-
 /* ================= BALANCE SOURCE OF TRUTH ================= */
 
-// PnL del engine (seguro)
-const enginePnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
+// ✅ PnL del engine (seguro) para components que esperan "enginePnl"
+const enginePnl = Number.isFinite((metrics as any)?.pnl) ? Number((metrics as any)?.pnl) : 0
 
 /* ================= EQUITY BUFFER (CHART) =================
    ✅ Se mueve SOLO cuando cambia el balance (no ticker).
 */
-
 useEffect(() => {
-  // si no está corriendo, no empujes puntos (para que no “camine” sola)
   if (!run.active) return
   if (!Number.isFinite(uiBalanceUsd)) return
 
   setEquityBuffer(prev => {
     const last = prev[prev.length - 1]
-    // evita spam de puntos idénticos
     if (last != null && Math.abs(uiBalanceUsd - last) < 0.01) return prev
     const next = [...prev, uiBalanceUsd]
     return next.length > 160 ? next.slice(-160) : next
@@ -1855,7 +1897,6 @@ useEffect(() => {
 
 const equityForChart = equityBuffer
 
-
 // ================= REALIZED PNL (SOLO CLOSED) =================
 const realizedPnlUsd = useMemo(() => {
   const src = (trades as any[]) || []
@@ -1863,7 +1904,6 @@ const realizedPnlUsd = useMemo(() => {
 
   for (const t of src) {
     const st = String(t.status ?? t.state ?? t.phase ?? "").toLowerCase()
-
     const isClosed =
       st === "closed" || st === "done" || st === "filled" || st === "settled" || st === "complete" ||
       st.includes("close") || st.includes("fill") || st.includes("settle")
@@ -1878,10 +1918,9 @@ const realizedPnlUsd = useMemo(() => {
 }, [trades])
 
 /* ================= SAFE METRICS ================= */
-const engineDrawdownPct = Number.isFinite(metrics?.drawdownPct as any) ? Number(metrics!.drawdownPct) : 0
+const engineDrawdownPct = Number.isFinite((metrics as any)?.drawdownPct) ? Number((metrics as any)?.drawdownPct) : 0
 
 /* ================= DRAWDOWN MIRROR (NO CICLO) ================= */
-// policy lee engineDdPct (state), y aquí lo actualizamos desde metrics (safe)
 useEffect(() => {
   setEngineDdPct(engineDrawdownPct)
 }, [engineDrawdownPct])
@@ -3130,28 +3169,14 @@ onRequestDisableProtections={() => {
   {/* BODY */}
   <div className="mt-4">
 
-<PhantomDeposit
-  network="mainnet-beta"
-  minUsd={depositMinUsd}
-  onBalanceCredit={(usdAmount, meta) => {
-    const credit = Math.max(0, Number(usdAmount) || 0)
+<button
+  type="button"
+  onClick={() => goTab("wallet")}
+  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[11px] font-semibold tracking-widest text-white/80 hover:bg-white/10"
+>
+  OPEN WALLET DEPOSIT →
+</button>
 
-    const wallet = meta?.publicKey
-    if (wallet) refreshAll(wallet)
-
-    x9("Deposit confirmed ✓", 1)
-
-    if (credit > 0) {
-      pushWalletTx({
-        kind: "DEPOSIT",
-        amountUsd: credit,
-        token: "SOL",
-        status: "CONFIRMED",
-        note: "Deposit credited · Phantom · Solana mainnet",
-      })
-    }
-  }}
-/>
 </div>
 
   {/* FOOTER LINE */}
@@ -3695,13 +3720,14 @@ onRequestDisableProtections={() => {
               </div>
 
               <div className="mt-3">
+                
                 <PhantomDeposit
               
   network="mainnet-beta"
   minUsd={depositMinUsd}
+  
   onBalanceCredit={(usdAmount) => {
     const credit = Math.max(0, Number(usdAmount) || 0)
-
     const wallet = window.solana?.publicKey?.toBase58?.()
     if (wallet) refreshAll(wallet)
 
