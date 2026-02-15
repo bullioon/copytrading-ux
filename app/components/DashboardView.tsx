@@ -1805,20 +1805,13 @@ const livePnlUsd = useMemo(() => {
   return Number.isFinite(v) ? Number(v) : 0
 }, [run.active, (metrics as any)?.pnl])
 
-// ✅ saved pnl: lo que guardaste (Firestore/API)
-const savedPnlUsd = useMemo(() => {
-  const v = savedEnginePnlUsd
-  return Number.isFinite(v) ? Number(v) : 0
-}, [savedEnginePnlUsd])
+// ===== WALLET + SAVED PNL (SIGNED) =====
+const savedPnlUsd = Number.isFinite(savedEnginePnlUsd) ? Number(savedEnginePnlUsd) : 0
 
-// ✅ pnl mostrado en UI: live si está corriendo, si no saved
-const pnlUsdForUi = run.active ? livePnlUsd : savedPnlUsd
-
-// ✅ TOTAL BALANCE (para Lite / displays): wallet + pnl (live/saved)
 const totalBalanceUsd = useMemo(() => {
-  const base = Number.isFinite(realBalanceUsd) ? Number(realBalanceUsd) : 0
-  return base + pnlUsdForUi
-}, [realBalanceUsd, pnlUsdForUi])
+  const wallet = Number.isFinite(realBalanceUsd) ? Number(realBalanceUsd) : 0
+  return wallet + savedPnlUsd // ✅ SUMA: si savedPnlUsd es negativo, baja
+}, [realBalanceUsd, savedPnlUsd])
 
 // ===== SAVE PNL AL DETENER RUN (ACTIVE -> OFF) =====
 const prevRunActiveRef = useRef(false)
@@ -2011,13 +2004,18 @@ const walletRealUsd =
   Number.isFinite(realBalanceUsd) && realBalanceUsd > 0 ? realBalanceUsd : 0
 
 const hasRealFunds = walletRealUsd > 0
-
-// pnl seguro
-const safePnl = Number.isFinite(metrics?.pnl) ? Number(metrics?.pnl) : 0
+// pnl mostrado: live si run.active, si no saved
+const pnlForCard = useMemo(() => {
+  if (run.active) {
+    const v = (metrics as any)?.pnl
+    return Number.isFinite(v) ? Number(v) : 0
+  }
+  return Number.isFinite(savedEnginePnlUsd) ? Number(savedEnginePnlUsd) : 0
+}, [run.active, (metrics as any)?.pnl, savedEnginePnlUsd])
 
 // total wallet mostrado (wallet + pnl) si ya hay fondos
 const walletTotalUsd = hasRealFunds
-  ? Math.max(0, walletRealUsd + safePnl)
+  ? Math.max(0, walletRealUsd + pnlForCard)
   : animUsd
 
 // hover: si hay fondos reales, NO lo bajes a 0
