@@ -1228,23 +1228,23 @@ const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
 const [savedEnginePnlUsd, setSavedEnginePnlUsd] = useState<number>(0)
 
 
+// ✅ source-of-truth wallet (una sola vez)
+const [walletPk, setWalletPk] = useState<string>("")
 
-// ===== PNL PERSIST (LOCALSTORAGE) =====
-const [persistedPnlUsd, setPersistedPnlUsd] = useState<number>(0)
-
-function getWalletBase58(): string {
-  try {
-    return (window as any)?.solana?.publicKey?.toBase58?.() || ""
-  } catch {
-    return ""
-  }
-}
-
-
-
-function pnlKey(wallet: string) {
-  return `pnlUsd:${wallet}`
-}
+// ✅ Detecta wallet 1 vez (solo para agarrar base58 si tu app aún no lo tiene)
+useEffect(() => {
+  let tries = 0
+  const t = setInterval(() => {
+    tries++
+    const w = (window as any)?.solana?.publicKey?.toBase58?.()
+    if (w) {
+      setWalletPk(w)
+      clearInterval(t)
+    }
+    if (tries >= 20) clearInterval(t) // ~4s
+  }, 200)
+  return () => clearInterval(t)
+}, [])
 
 async function refreshAll(wallet: string) {
   try {
@@ -1263,36 +1263,12 @@ async function refreshAll(wallet: string) {
   }
 }
 
-
-/* 👇👇👇 PEGA ESTO JUSTO AQUÍ 👇👇👇 */
-
+// ✅ Carga Firestore SIEMPRE que ya exista walletPk
 useEffect(() => {
-  let tries = 0
-  const t = setInterval(() => {
-    tries++
-    const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-    if (wallet) {
-      refreshAll(wallet)
-      clearInterval(t)
-    }
-    if (tries >= 10) clearInterval(t) // ~2s
-  }, 200)
-
-  return () => clearInterval(t)
+  if (!walletPk) return
+  refreshAll(walletPk)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [])
-
-/* 👆👆👆 AQUÍ TERMINA 👆👆👆 */
-
-
-useEffect(() => {
-  const w = getWalletBase58()
-  if (!w) return
-  const raw = localStorage.getItem(pnlKey(w))
-  const v = Number(raw ?? 0)
-  setPersistedPnlUsd(Number.isFinite(v) ? v : 0)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [])
+}, [walletPk])
 
 const walletBalanceUsd = realBalanceUsd
 
@@ -1785,47 +1761,42 @@ const engine = useTradingEngine({
 
 const { metrics, trades, status } = engine
 
-// ===== BALANCE REAL + PNL GUARDADO (SOURCE OF TRUTH) =====
-const savedPnlUsd = Number.isFinite(savedEnginePnlUsd)
-  ? savedEnginePnlUsd
-  : 0
+const walletAddress =
+  typeof window !== "undefined"
+    ? (window as any)?.solana?.publicKey?.toBase58?.() ?? ""
+    : ""
 
+// ===== BALANCE REAL + PNL GUARDADO (SOURCE OF TRUTH) =====
+const savedPnlUsd = Number.isFinite(savedEnginePnlUsd) ? savedEnginePnlUsd : 0
 const totalBalanceUsd = realBalanceUsd + savedPnlUsd
 
+const prevRunActiveRef = useRef(false)
+
 useEffect(() => {
+  const isNowActive = !!run?.active
+  const wasActive = prevRunActiveRef.current
+  prevRunActiveRef.current = isNowActive
+
+  // Solo cuando pasa de ACTIVE -> OFF (se detuvo)
+  if (!(wasActive && !isNowActive)) return
+
   const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
   if (!wallet) return
 
-  const pnl = Number.isFinite(metrics?.pnl) ? Number(metrics!.pnl) : 0
+  const raw = (metrics as any)?.pnl
+  if (!Number.isFinite(raw)) return
 
-  // guarda en Firestore
+  const pnl = Number(raw)
+
   fetch("/api/wallet/pnl", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallet, enginePnlUsd: pnl }),
   }).catch(() => {})
 
-  // y también actualiza el state local (para que la UI no brinque)
   setSavedEnginePnlUsd(pnl)
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [metrics?.pnl])
-useEffect(() => {
-  let interval: any
-
-  function tryLoad() {
-    const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-    if (!wallet) return
-
-    refreshAll(wallet)
-    clearInterval(interval)
-  }
-
-  interval = setInterval(tryLoad, 300)
-
-  return () => clearInterval(interval)
-}, [])
-
+}, [run?.active])
 
 /* ================= TOTAL EQUITY (SOURCE OF TRUTH) ================= */
 
@@ -2004,18 +1975,6 @@ const hasRealFunds = walletRealUsd > 0
 
 // pnl seguro
 const safePnl = Number.isFinite(metrics?.pnl) ? Number(metrics?.pnl) : 0
-
-useEffect(() => {
-  const w = getWalletBase58()
-  if (!w) return
-
-  // solo persiste si es número válido
-  if (Number.isFinite(safePnl)) {
-    setPersistedPnlUsd(safePnl)
-    localStorage.setItem(pnlKey(w), String(safePnl))
-  }
-  // IMPORTANTE: si tu flag se llama diferente a run.active, cámbialo aquí
-}, [safePnl])
 
 // total wallet mostrado (wallet + pnl) si ya hay fondos
 const walletTotalUsd = hasRealFunds
