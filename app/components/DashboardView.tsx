@@ -76,7 +76,6 @@ function kindTone(k: WalletTxKind) {
     : "border-sky-300/20 bg-sky-300/10 text-sky-100/90"
 }
 
-
 /* ================= TYPES ================= */
 
 type StartupPresetId = "SAFE_COPY" | "BALANCED_COPY" | "AGGRO_COPY"
@@ -1852,14 +1851,34 @@ const totalEquityUsd = useMemo(() => {
   return base + enginePnlUsd
 }, [realBalanceUsd, enginePnlUsd])
 
-// ✅ UI balance principal del DASH:
-// - si run.active: allocated + pnl live
-// - si NO: wallet + savedPnL (totalBalanceUsd)
-const uiBalanceUsd = useMemo(() => {
-  if (!run.active) return totalBalanceUsd
-  const alloc = Number.isFinite(allocatedUsd as any) ? Number(allocatedUsd) : 0
-  return alloc + enginePnlUsd
-}, [run.active, totalBalanceUsd, allocatedUsd, enginePnlUsd])
+
+// ✅ BIG METRIC (SOURCE OF TRUTH ÚNICO)
+// Regla: Big Metric = Initial deposit (wallet real) + PnL
+const bigMetricPnlUsd = useMemo(() => {
+  // cuando está corriendo: pnl live
+  if (run.active) return enginePnlUsd
+  // cuando NO está corriendo: pnl guardado
+  return savedPnlUsd
+}, [run.active, enginePnlUsd, savedPnlUsd])
+
+const bigMetricUsd = useMemo(() => {
+  const wallet = Number.isFinite(realBalanceUsd as any) ? Number(realBalanceUsd) : 0
+  return wallet + bigMetricPnlUsd
+}, [realBalanceUsd, bigMetricPnlUsd])
+
+// ✅ Mantén uiBalanceUsd como alias para no romper el resto del archivo
+const uiBalanceUsd = bigMetricUsd
+
+useEffect(() => {
+  console.log("[BIG METRIC CHECK]", {
+    runActive: run.active,
+    realBalanceUsd,
+    enginePnlUsd,
+    savedPnlUsd,
+    bigMetricUsd,
+    allocatedUsd,
+  })
+}, [run.active, realBalanceUsd, enginePnlUsd, savedPnlUsd, bigMetricUsd, allocatedUsd])
 
 /* ===== AVAILABLE FOR ALLOCATION (FROM TOTAL EQUITY) ===== */
 const availableUsd = useMemo(() => {
@@ -2014,8 +2033,9 @@ const pnlForCard = useMemo(() => {
 }, [run.active, (metrics as any)?.pnl, savedEnginePnlUsd])
 
 // total wallet mostrado (wallet + pnl) si ya hay fondos
+// ✅ WALLET VISUAL = BIG METRIC
 const walletTotalUsd = hasRealFunds
-  ? Math.max(0, walletRealUsd + pnlForCard)
+  ? Math.max(0, bigMetricUsd)
   : animUsd
 
 // hover: si hay fondos reales, NO lo bajes a 0
@@ -2380,14 +2400,10 @@ useEffect(() => {
   if (v > 0) lastGoodBalanceRef.current = v
 }, [availableUsd])
 
-
-const walletUsd = toNum(realBalanceUsd) // lo que viene de firebase wallet
-const pnlUsd = toNum(enginePnl) // OJO: aquí pon la MISMA variable que ya usas para pintar "PnL +$..."
-const equityUsd = walletUsd + pnlUsd
-
-const maxUsdForAlloc = Math.max(0, equityUsd || walletUsd)
-console.log("[ALLOC MAX]", { walletUsd, pnlUsd, equityUsd, maxUsdForAlloc })
-
+// ✅ HOW MUCH TO ADD = BIG METRIC
+const maxUsdForAlloc = useMemo(() => {
+  return Math.max(0, bigMetricUsd)
+}, [bigMetricUsd])
 
 /* ===== OPEN ALLOCATION ===== */
 console.log("[ALLOC DEBUG]", { realBalanceUsd, availableUsd })
@@ -2939,6 +2955,7 @@ return (
       <div className="h-8 w-8 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-xs font-bold text-emerald-300">
         B
       </div>
+      
       <div>
         <div className="text-xs tracking-widest text-white/40">
           BULLION ENGINE
