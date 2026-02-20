@@ -1324,7 +1324,7 @@ useEffect(() => {
           presetId: (r.presetId ?? null) as any,
           startedAtMs: Number(r.startedAt ?? r.lastTickAt ?? Date.now()),
           // durationSec lo dejas igual (tu UI lo usa como “window”)
-          durationSec: prev.durationSec || 0,
+          durationSec: Number(r.durationSec ?? prev.durationSec ?? 0),
           startPnl: Number(r.pnlUsd ?? 0),
           // startBalance puedes mantenerlo como estaba
           startBalance: prev.startBalance || 0,
@@ -2561,15 +2561,16 @@ const safeAvailable = maxUsdForAlloc
 const wallet = window.solana?.publicKey?.toBase58?.()
 if (wallet) {
   fetch("/api/engine/run", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      wallet,
-      active: true,
-      allocatedUsd: safeAmount,
-      presetId: ctx?.mode === "PRESET" ? ctx?.presetId : null,
-    }),
-  }).catch(() => {})
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    wallet,
+    active: true,
+    allocatedUsd: safeAmount,
+    presetId: ctx.mode === "PRESET" ? ctx.presetId : null,
+    durationSec: run.durationSec, // 👈 esto es la clave
+  }),
+}).catch(() => {})
 }
 
   if (ctx.mode === "PRESET") {
