@@ -1239,6 +1239,7 @@ function getWalletKey() {
   return (window as any)?.solana?.publicKey?.toBase58?.() as string | undefined
 }
 
+
 async function refreshAll(wallet: string) {
   if (!wallet) return
   if (refreshBusyRef.current) return
@@ -1253,10 +1254,16 @@ async function refreshAll(wallet: string) {
     const balJson = await balRes.json().catch(() => null)
     const pnlJson = await pnlRes.json().catch(() => null)
 
-    if (balJson?.ok) setRealBalanceUsd(Number(balJson.balanceUsd || 0))
-    if (pnlJson?.ok) setSavedEnginePnlUsd(Number(pnlJson.enginePnlUsd || 0))
+    // ✅ HYDRATE FROM FIRESTORE (SOURCE OF TRUTH)
+const bal = Number(balJson?.balanceUsd ?? balJson?.balance ?? 0)
+const pnl = Number(pnlJson?.enginePnlUsd ?? pnlJson?.pnlUsd ?? pnlJson?.pnl ?? 0)
 
-    setWalletHydrated(true)
+if (Number.isFinite(bal)) setRealBalanceUsd(bal)
+if (Number.isFinite(pnl)) setSavedEnginePnlUsd(pnl)
+
+// ✅ marca hidratado (para que tu UI no use "0" en refresh)
+setWalletHydrated(true)
+    
   } catch (e) {
     console.error("refreshAll failed", e)
   } finally {
@@ -1811,7 +1818,6 @@ const totalBalanceUsd = useMemo(() => {
   const wallet = Number.isFinite(realBalanceUsd) ? Number(realBalanceUsd) : 0
   return wallet + savedPnlUsd // ✅ SUMA: si savedPnlUsd es negativo, baja
 }, [realBalanceUsd, savedPnlUsd])
-
 // ===== SAVE PNL AL DETENER RUN (ACTIVE -> OFF) =====
 const prevRunActiveRef = useRef(false)
 
@@ -1823,29 +1829,32 @@ useEffect(() => {
   // ✅ Solo cuando pasa de ACTIVE -> OFF
   if (!(wasActive && !isNowActive)) return
 
-  const raw = (metrics as any)?.pnl
-  if (!Number.isFinite(raw)) return
+  const endPnlRaw = (metrics as any)?.pnl
+  if (!Number.isFinite(endPnlRaw)) return
+  const endPnl = Number(endPnlRaw)
 
-const pnl = Number(raw)
+  // ✅ SUPER IMPORTANTE: guardar SOLO el delta del run
+  const startPnl = Number.isFinite(run?.startPnl as any) ? Number(run.startPnl) : 0
+  const pnlDelta = endPnl - startPnl
 
-const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-if (!wallet) return
+  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+  if (!wallet) return
 
-setSavedEnginePnlUsd(prev => {
-  const base = Number.isFinite(prev as any) ? Number(prev) : 0
-  const next = base + pnl
+  setSavedEnginePnlUsd(prev => {
+    const base = Number.isFinite(prev as any) ? Number(prev) : 0
+    const next = base + pnlDelta
 
-  // ✅ Persistir ACUMULADO
-  fetch("/api/wallet/pnl", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ wallet, enginePnlUsd: next }),
-  }).catch(() => {})
+    // ✅ Persistir ACUMULADO (banked pnl)
+    fetch("/api/wallet/pnl", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet, enginePnlUsd: next }),
+    }).catch(() => {})
 
-  return next
-})
+    return next
+  })
+}, [run?.active, run?.startPnl, (metrics as any)?.pnl])
 
-}, [run?.active, (metrics as any)?.pnl])
 /* ================= TOTAL EQUITY + BIG METRIC (SOURCE OF TRUTH) ================= */
 
 // ✅ PnL live SOLO cuando run.active
@@ -1876,20 +1885,9 @@ const uiBalanceUsd = bigMetricUsd
 // ✅ TOTAL EQUITY (para cálculos internos / available)
 // Si corre: wallet + pnl live
 // Si no corre: wallet + pnl saved  (o sea Big Metric)
-const totalEquityUsd = useMemo(() => {
-  return walletPrincipalUsd + (run.active ? enginePnlUsd : savedPnlUsd)
-}, [walletPrincipalUsd, run.active, enginePnlUsd, savedPnlUsd])
 
-useEffect(() => {
-  console.log("[BIG METRIC CHECK]", {
-    runActive: run.active,
-    walletPrincipalUsd,
-    enginePnlUsd,
-    savedPnlUsd,
-    bigMetricUsd,
-    allocatedUsd,
-  })
-}, [run.active, walletPrincipalUsd, enginePnlUsd, savedPnlUsd, bigMetricUsd, allocatedUsd])
+
+const totalEquityUsd = bigMetricUsd
 
 useEffect(() => {
   console.log("[BIG METRIC CHECK]", {
@@ -2485,6 +2483,23 @@ const safeAvailable = maxUsdForAlloc
   setAllocatedUsd(safeAmount)
   setBaselineUsd(safeAmount)
 
+  
+  const wallet = window.solana?.publicKey?.toBase58?.()
+if (wallet) {
+fetch("/api/engine/run", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    wallet,
+    active: true,
+    allocatedUsd: safeAmount,
+    presetId: ctx.mode === "PRESET" ? ctx.presetId : null,
+    // resetPnl: true, // SOLO si quieres resetear manualmente
+    notes: "ui-run",
+  }),
+})
+}
+
   if (ctx.mode === "PRESET") {
     applyStartupPreset(ctx.presetId, safeAmount)
     setStarting(false)
@@ -3063,10 +3078,24 @@ onRequestDisableProtections={() => {
   runActive={run.active}
   runPresetId={run.presetId}
   runRemainingSec={runRemainingSec}
+
   onStop={() => {
-    // si ya tienes stopRun() úsalo aquí
-    setRun(prev => ({ ...prev, active: false, presetId: null, durationSec: 0 }))
-  }}
+  // 1) apaga UI run
+  setRun(prev => ({ ...prev, active: false, presetId: null, durationSec: 0 }))
+
+  // 2) apaga run en backend (para que el cron/tick se detenga)
+  const wallet = window.solana?.publicKey?.toBase58?.()
+  if (wallet) {
+    fetch("/api/engine/run", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ wallet, active: false, notes: "stopped" }),
+})
+  }
+
+  // 3) opcional: despausa por si quedó en brake
+  try { engine.actions.setPaused(false) } catch {}
+}}
   starting={starting}
   specialHot={false} // ✅ por ahora (hasta que tengas lógica)
   signals={{ drawdownPct: engineDdPct, lossStreak, equityFlatMs }} // ✅ sin "signals" externo
@@ -3481,7 +3510,7 @@ onRequestDisableProtections={() => {
 
 <AllocateCapitalModal
   open={allocOpen}
-  maxUsd={maxUsdForAlloc}
+  maxUsd={bigMetricUsd}
   onClose={() => {
     setAllocOpen(false)
     setAllocContext(null)
