@@ -1826,48 +1826,70 @@ useEffect(() => {
   const raw = (metrics as any)?.pnl
   if (!Number.isFinite(raw)) return
 
-  const pnl = Number(raw)
-  setSavedEnginePnlUsd(pnl)
+const pnl = Number(raw)
 
-  const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
-  if (!wallet) return
+const wallet = (window as any)?.solana?.publicKey?.toBase58?.()
+if (!wallet) return
 
-  // ✅ Persistir en backend (recomendado)
+setSavedEnginePnlUsd(prev => {
+  const base = Number.isFinite(prev as any) ? Number(prev) : 0
+  const next = base + pnl
+
+  // ✅ Persistir ACUMULADO
   fetch("/api/wallet/pnl", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ wallet, enginePnlUsd: pnl }),
+    body: JSON.stringify({ wallet, enginePnlUsd: next }),
   }).catch(() => {})
+
+  return next
+})
+
 }, [run?.active, (metrics as any)?.pnl])
+/* ================= TOTAL EQUITY + BIG METRIC (SOURCE OF TRUTH) ================= */
 
-/* ================= TOTAL EQUITY (SOURCE OF TRUTH) ================= */
-
-// ✅ PnL del engine SOLO cuenta cuando run.active
+// ✅ PnL live SOLO cuando run.active
 const enginePnlUsd = livePnlUsd
 
-// ✅ TOTAL EQUITY real: wallet + pnl live (si run.active)
-const totalEquityUsd = useMemo(() => {
-  const base = Number.isFinite(realBalanceUsd as any) ? Number(realBalanceUsd) : 0
-  return base + enginePnlUsd
-}, [realBalanceUsd, enginePnlUsd])
-
-
-// ✅ BIG METRIC (SOURCE OF TRUTH ÚNICO)
-// Regla: Big Metric = Initial deposit (wallet real) + PnL
+// ✅ PnL que se muestra en Big Metric:
+// - si run.active → live
+// - si NO → saved (bank)
 const bigMetricPnlUsd = useMemo(() => {
-  // cuando está corriendo: pnl live
-  if (run.active) return enginePnlUsd
-  // cuando NO está corriendo: pnl guardado
-  return savedPnlUsd
+  return run.active ? enginePnlUsd : savedPnlUsd
 }, [run.active, enginePnlUsd, savedPnlUsd])
 
-const bigMetricUsd = useMemo(() => {
-  const wallet = Number.isFinite(realBalanceUsd as any) ? Number(realBalanceUsd) : 0
-  return wallet + bigMetricPnlUsd
-}, [realBalanceUsd, bigMetricPnlUsd])
+// ✅ WALLET principal (initial deposit real)
+const walletPrincipalUsd = useMemo(() => {
+  const w = Number(realBalanceUsd)
+  return Number.isFinite(w) ? w : 0
+}, [realBalanceUsd])
 
-// ✅ Mantén uiBalanceUsd como alias para no romper el resto del archivo
+// ✅ BIG METRIC (SOURCE OF TRUTH ÚNICO)
+// Regla: Big Metric = Wallet principal + PnL (live o saved)
+const bigMetricUsd = useMemo(() => {
+  return walletPrincipalUsd + bigMetricPnlUsd
+}, [walletPrincipalUsd, bigMetricPnlUsd])
+
+// ✅ Alias para no romper el resto del archivo
 const uiBalanceUsd = bigMetricUsd
+
+// ✅ TOTAL EQUITY (para cálculos internos / available)
+// Si corre: wallet + pnl live
+// Si no corre: wallet + pnl saved  (o sea Big Metric)
+const totalEquityUsd = useMemo(() => {
+  return walletPrincipalUsd + (run.active ? enginePnlUsd : savedPnlUsd)
+}, [walletPrincipalUsd, run.active, enginePnlUsd, savedPnlUsd])
+
+useEffect(() => {
+  console.log("[BIG METRIC CHECK]", {
+    runActive: run.active,
+    walletPrincipalUsd,
+    enginePnlUsd,
+    savedPnlUsd,
+    bigMetricUsd,
+    allocatedUsd,
+  })
+}, [run.active, walletPrincipalUsd, enginePnlUsd, savedPnlUsd, bigMetricUsd, allocatedUsd])
 
 useEffect(() => {
   console.log("[BIG METRIC CHECK]", {
@@ -2955,7 +2977,7 @@ return (
       <div className="h-8 w-8 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-xs font-bold text-emerald-300">
         B
       </div>
-      
+
       <div>
         <div className="text-xs tracking-widest text-white/40">
           BULLION ENGINE

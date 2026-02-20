@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/engine/tick?secret=MY_SUPER_SECRET_123",
+      "schedule": "* * * * *"
+    }
+  ]
+}
