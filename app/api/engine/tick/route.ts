@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/firebaseAdmin"
 
 export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 
 function tickEngine(run: any) {
   const drift = (Math.random() - 0.5) * 4 // -2 a +2 USD por minuto
