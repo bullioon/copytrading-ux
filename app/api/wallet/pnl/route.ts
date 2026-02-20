@@ -52,4 +52,5 @@ export async function GET(req: Request) {
   }
 }
 
+// 👇 esto fuerza a TS a tratarlo como módulo aunque el build se ponga mamón
 export {}

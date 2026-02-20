@@ -212,25 +212,19 @@ export default function PhantomDeposit({
       await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed")
 
 // 4) ✅ credit en backend (Firebase)
-const usdAmountClient = Number.isFinite(solUsdLive) && solUsdLive > 0
-  ? Number((amount * solUsdLive).toFixed(2))
-  : 0
-
-if (!(usdAmountClient > 0)) {
-  throw new Error("SOL/USD price not ready to credit deposit")
-}
+const usdEst = Number.isFinite(solUsdLive) && solUsdLive > 0 ? amount * solUsdLive : 0
 
 const confirmRes = await fetch("/api/deposit/confirm", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    wallet: pubkey,              // ✅ lo que tu route espera
-    amountUsd: usdAmountClient,  // ✅ lo que tu route espera
-    depositId: signature,        // ✅ idempotencia real
+    wallet: pubkey,
+    amountUsd: usdEst,
+    depositId: signature,
     token: "SOL",
     status: "CONFIRMED",
     note: "Deposit · Phantom",
-    blockTime: Math.floor(Date.now() / 1000), // número (segundos)
+    blockTime: Math.floor(Date.now() / 1000),
   }),
 })
 
@@ -239,7 +233,8 @@ if (!confirmRes.ok || !confirmJson?.ok) {
   throw new Error(confirmJson?.error || "Failed to confirm/credit deposit")
 }
 
-const usdAmount = Number(confirmJson?.amountUsd ?? confirmJson?.usd ?? 0) || 0
+// el backend te regresa el amountUsd oficial
+const usdAmount = Number(confirmJson?.amountUsd ?? usdEst)
 const solUsd = Number(confirmJson?.solUsd ?? solUsdLive) || solUsdLive
 
 const meta = {

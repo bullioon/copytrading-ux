@@ -89,3 +89,4 @@ export async function GET(req: Request) {
     minTickMs: MIN_TICK_MS,
   })
 }
+
