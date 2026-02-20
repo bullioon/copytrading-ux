@@ -1230,7 +1230,7 @@ const lastCreditSigRef = useRef<string>("")   // dedupe de onBalanceCredit por s
 const [realBalanceUsd, setRealBalanceUsd] = useState<number>(0)
 const [savedEnginePnlUsd, setSavedEnginePnlUsd] = useState<number>(0)
 
-// ===== WALLET CONTROL =====
+// ===== WALLET CONTROL ===== 
 const [walletHydrated, setWalletHydrated] = useState(false)
 const refreshBusyRef = useRef(false)
 const didBootRefreshRef = useRef(false)
@@ -1300,11 +1300,85 @@ useEffect(() => {
   return () => clearInterval(t)
 }, [])
 
+// ================= HYDRATE RUN FROM FIRESTORE =================
+useEffect(() => {
+  if (!walletPk) return
+
+  ;(async () => {
+    try {
+      const res = await fetch(
+        `/api/engine/status?wallet=${encodeURIComponent(walletPk)}`,
+        { cache: "no-store" }
+      )
+      const json = await res.json().catch(() => null)
+      if (!json?.ok) return
+
+      const r = json.run
+      if (!r) return
+
+      // Si Firestore dice active=true, prendemos UI run
+      if (r.active === true) {
+        setRun(prev => ({
+          ...prev,
+          active: true,
+          presetId: (r.presetId ?? null) as any,
+          startedAtMs: Number(r.startedAt ?? r.lastTickAt ?? Date.now()),
+          // durationSec lo dejas igual (tu UI lo usa como “window”)
+          durationSec: prev.durationSec || 0,
+          startPnl: Number(r.pnlUsd ?? 0),
+          // startBalance puedes mantenerlo como estaba
+          startBalance: prev.startBalance || 0,
+        }))
+      }
+    } catch (e) {
+      console.error("hydrate run failed", e)
+    }
+  })()
+}, [walletPk])
+
+
 // ✅ Carga Firestore SIEMPRE que ya exista walletPk
 useEffect(() => {
   if (!walletPk) return
   refreshAll(walletPk)
   // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [walletPk])
+
+
+// 🔁 ENGINE LIVE POLL (IMPORTANTE)
+useEffect(() => {
+  if (!walletPk) return
+
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(
+        `/api/engine/status?wallet=${encodeURIComponent(walletPk)}`,
+        { cache: "no-store" }
+      )
+      const json = await res.json().catch(() => null)
+      if (!json?.ok || !json?.run) return
+
+      const r = json.run
+
+      // Mantener RUN activo si backend dice activo
+      if (r.active) {
+        setRun(prev => ({
+          ...prev,
+          active: true,
+          presetId: r.presetId ?? prev.presetId,
+          startedAtMs: Number(r.startedAt ?? prev.startedAtMs),
+        }))
+      }
+
+      // Actualizar PnL desde Firestore
+      if (typeof r.pnlUsd === "number") {
+        setSavedEnginePnlUsd(r.pnlUsd)
+      }
+
+    } catch {}
+  }, 6000) // cada 6s
+
+  return () => clearInterval(interval)
 }, [walletPk])
 
 const walletBalanceUsd = realBalanceUsd
@@ -2484,20 +2558,18 @@ const safeAvailable = maxUsdForAlloc
   setBaselineUsd(safeAmount)
 
   
-  const wallet = window.solana?.publicKey?.toBase58?.()
+const wallet = window.solana?.publicKey?.toBase58?.()
 if (wallet) {
-fetch("/api/engine/run", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    wallet,
-    active: true,
-    allocatedUsd: safeAmount,
-    presetId: ctx.mode === "PRESET" ? ctx.presetId : null,
-    // resetPnl: true, // SOLO si quieres resetear manualmente
-    notes: "ui-run",
-  }),
-})
+  fetch("/api/engine/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      wallet,
+      active: true,
+      allocatedUsd: safeAmount,
+      presetId: ctx?.mode === "PRESET" ? ctx?.presetId : null,
+    }),
+  }).catch(() => {})
 }
 
   if (ctx.mode === "PRESET") {
@@ -3079,28 +3151,25 @@ onRequestDisableProtections={() => {
   runPresetId={run.presetId}
   runRemainingSec={runRemainingSec}
 
-  onStop={() => {
-  // 1) apaga UI run
+onStop={async () => {
+  // 1) apaga UI
   setRun(prev => ({ ...prev, active: false, presetId: null, durationSec: 0 }))
 
-  // 2) apaga run en backend (para que el cron/tick se detenga)
+  // 2) apaga backend (detiene tick)
   const wallet = window.solana?.publicKey?.toBase58?.()
-  if (wallet) {
-    fetch("/api/engine/run", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ wallet, active: false, notes: "stopped" }),
-})
-  }
+  if (!wallet) return
 
-  // 3) opcional: despausa por si quedó en brake
-  try { engine.actions.setPaused(false) } catch {}
+  fetch("/api/engine/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wallet, active: false }),
+  }).catch(() => {})
 }}
+
   starting={starting}
   specialHot={false} // ✅ por ahora (hasta que tengas lógica)
   signals={{ drawdownPct: engineDdPct, lossStreak, equityFlatMs }} // ✅ sin "signals" externo
 />
-
 
     {/* 6XS TERMINAL */}
     <SixXSTerminal
