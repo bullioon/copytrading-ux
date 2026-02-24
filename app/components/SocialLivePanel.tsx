@@ -271,8 +271,9 @@ export default function SocialLivePanel() {
   const bonusUnlocked = confirmIg && confirmDiscord
 
   // simulation
-  const [simOn, setSimOn] = useState(true)
-  const simTimer = useRef<number | null>(null)
+const [simOn, setSimOn] = useState(true)
+const seenIdsRef = useRef<Set<string>>(new Set()) // ✅ ARRIBA de simTimer
+const simTimer = useRef<number | null>(null)
   const lastSimSig = useRef<string>("") // ✅ evita repetir el mismo texto/usuario back-to-back
 
   const ratingOfMonth = useMemo(() => {
@@ -286,6 +287,38 @@ export default function SocialLivePanel() {
     const v = (confirmIg ? 0.5 : 0) + (confirmDiscord ? 0.5 : 0)
     return Math.round(v * 100)
   }, [confirmIg, confirmDiscord])
+
+  
+  // ✅ DEDUPE MERGE
+function mergeUnique(next: CommentItem[], prev: CommentItem[]) {
+  const map = new Map<string, CommentItem>()
+
+  const all = [...next, ...prev]
+
+  for (const item of all) {
+    const existing = map.get(item.id)
+
+    if (!existing) {
+      map.set(item.id, item)
+      continue
+    }
+
+    // Si uno es sim y el otro real → prioriza real
+    if (existing.isSim && !item.isSim) {
+      map.set(item.id, item)
+      continue
+    }
+
+    // Si ambos son mismo tipo → el más nuevo gana
+    if (item.createdAt > existing.createdAt) {
+      map.set(item.id, item)
+    }
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => b.createdAt - a.createdAt
+  )
+}
 
   async function fetchFeed() {
     setLoading(true)
@@ -312,15 +345,16 @@ export default function SocialLivePanel() {
         isSim: false,
       }))
 
-      setItems((prev) => {
-        // conserva sims ya puestos
-        const sims = prev.filter((p) => p.isSim)
 
-        // mezcla server + sims + prev-real (por si coincide fetch con optimistic)
-        const prevReal = prev.filter((p) => !p.isSim)
+setItems((prev) => {
+  const sims = prev.filter((p) => p.isSim)
+  const merged = mergeUnique(serverItems, sims).slice(0, 3)
 
-        return mergeDedupe([...serverItems, ...prevReal, ...sims], 3)
-      })
+  // opcional: “memoria” de ids vistos (sirve para debug/anti-repeat)
+  for (const it of merged) seenIdsRef.current.add(it.id)
+
+  return merged
+})
     } catch (e) {
       console.error(e)
     } finally {
@@ -372,7 +406,7 @@ export default function SocialLivePanel() {
         }
 
         if (newItem) {
-          setItems((prev) => mergeDedupe([newItem!, ...prev], 3))
+         setItems((prev) => mergeUnique([newItem], prev).slice(0, 3))
         }
 
         schedule()
@@ -601,7 +635,7 @@ export default function SocialLivePanel() {
             <SeedAvatar seed={c.username} />
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="text-[12px] tracking-widest text-white/85 font-semibold truncate">
@@ -618,8 +652,7 @@ export default function SocialLivePanel() {
                   </div>
                 </div>
 
-                <div className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[10px] tracking-widest text-white/75">
-                  ★ {clamp(c.stars, 1, 5)}
+                    <div className="self-start shrink-0 rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[10px] tracking-widest text-white/75">                  ★ {clamp(c.stars, 1, 5)}
                 </div>
               </div>
 
