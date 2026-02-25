@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import AICoreFlow from "@/app/components/AICoreFlow"
 import SocialLivePanel from "@/app/components/SocialLivePanel"
 
+
 type Profile = "BULLION" | "HELLION" | "TORION"
 
 const PROFILES: Record<
@@ -349,33 +350,57 @@ export default function OnboardingPage() {
       </div>
 
       {/* HEADER */}
-      <header
-        className="fixed top-0 inset-x-0 z-30 h-14 px-4 md:px-6 flex items-center justify-between backdrop-blur border-b border-white/10"
-        style={{ background: headerGlow }}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <TierMark tier={selected} active />
-          <div className="min-w-0">
-            <div className="tracking-[0.18em] text-[11px] font-semibold text-white/85 truncate">STRATEGY LAB</div>
-            <div className="text-[10px] tracking-widest text-white/50 truncate">
-              ACTIVE TIER · <span className={`${active.text} font-semibold`}>{selected}</span>
-            </div>
-          </div>
-        </div>
+<header
+  className={[
+    "fixed top-0 inset-x-0 z-30",
+    "h-16 md:h-14",
+    "px-4 md:px-6",
+    "flex items-center justify-between",
+    "border-b border-white/10",
+    "backdrop-blur-xl",
+    "bg-black/40",
+    "supports-[backdrop-filter]:bg-black/30",
+  ].join(" ")}
+  style={{ background: headerGlow }}
+>
+  {/* overlay tier tint (suave) */}
+  <div
+    className="pointer-events-none absolute inset-0 opacity-80"
+    style={{
+      background: `radial-gradient(900px 280px at 20% 0%, ${active.accentGlow}, rgba(0,0,0,0) 62%)`,
+    }}
+  />
 
-        <div className="flex items-center gap-2">
-          <div className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[10px] tracking-widest text-white/80">
-            <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-2 align-middle" />
-            SOLANA
-          </div>
-          <div className="hidden md:flex rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[10px] tracking-widest text-white/65">
-            bunker <span className="ml-2 text-white/90 font-semibold">ON</span>
-          </div>
-        </div>
-      </header>
+  {/* content */}
+  <div className="relative flex items-center gap-3 min-w-0">
+    <TierMark tier={selected} active />
+    <div className="min-w-0">
+      <div className="tracking-[0.18em] text-[11px] font-semibold text-white/85 truncate">
+        STRATEGY LAB
+      </div>
+
+      {/* en móvil, menos tracking para que no se “rompa” */}
+      <div className="text-[10px] tracking-[0.18em] md:tracking-widest text-white/50 truncate">
+        ACTIVE TIER · <span className={`${active.text} font-semibold`}>{selected}</span>
+      </div>
+    </div>
+  </div>
+
+  <div className="relative flex items-center gap-2">
+    <div className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[10px] tracking-widest text-white/80">
+      <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-2 align-middle" />
+      SOLANA
+    </div>
+
+    {/* bunker pill quítalo en mobile para que no choque */}
+    <div className="hidden md:flex rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[10px] tracking-widest text-white/65">
+      bunker <span className="ml-2 text-white/90 font-semibold">ON</span>
+    </div>
+  </div>
+</header>
 
       {/* CONTENT */}
-      <section className="relative z-10 pt-20 md:pt-24 px-4 md:px-6 pb-20">
+      <section className="relative z-10 pt-24 md:pt-28 px-4 md:px-6 pb-20">
         <div className="mx-auto w-full max-w-6xl">
           {/* HERO */}
           <div className="text-center">
@@ -391,7 +416,16 @@ export default function OnboardingPage() {
                   <div className="flex items-center gap-3">
                     <TierMark tier={selected} active />
                     <div className="min-w-0">
-                      <div className="text-[10px] tracking-[0.26em] text-white/50">AI ROUTING · FILTERS · EXECUTION PATHS</div>
+<div className="text-[10px] md:text-[10px] uppercase text-white/50">
+<div className="text-[9px] md:text-[10px] tracking-[0.26em] text-white/50 leading-snug">
+  <span className="hidden sm:inline">AI ROUTING · FILTERS · EXECUTION PATHS</span>
+  <span className="sm:hidden">AI ROUTING · FILTERS · EXECUTION</span>
+  <span className="sm:hidden block">PATHS</span>
+</div>
+  <div className="mt-1 tracking-[0.22em] md:tracking-[0.26em] text-center md:text-left">
+    PATHS
+  </div>
+</div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span className={`text-[12px] tracking-widest font-semibold ${active.text}`}>{active.title}</span>
                         <span className="text-white/35">·</span>
@@ -427,7 +461,7 @@ export default function OnboardingPage() {
                 className="relative rounded-[30px] border border-emerald-300/20 bg-black/55 px-6 py-5"
                 style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 160px rgba(34,197,94,0.20)" }}
               >
-                <img src="/bullionl.svg" alt="Bullions" className="h-12 md:h-14 w-auto object-contain opacity-95" draggable={false} />
+                <img src="/oglog.png" alt="Bullions" className="h-12 md:h-14 w-auto object-contain opacity-95" draggable={false} />
               </div>
             </div>
 
@@ -453,7 +487,34 @@ export default function OnboardingPage() {
               >
                 START FREE ▸
                 <div className="mt-1 text-[10px] tracking-widest text-white/60 font-normal">$50 min · $300 sweet spot</div>
-              </button>
+   
+             </button>
+
+<div className="mt-6 space-y-3">
+
+
+<button
+  type="button"
+  onClick={() => router.push("/enterlab/email")}
+  className={`
+    w-full rounded-2xl
+    border border-white/10
+    bg-black/50 backdrop-blur-md
+    px-6 py-5
+    text-[13px] font-semibold tracking-widest
+    text-white/85
+    hover:bg-white/[0.05]
+    hover:border-emerald-300/25
+    transition-all duration-300
+  `}
+>
+  EMAIL REGISTER ▸
+  <div className="text-[11px] tracking-widest text-white/50 mt-1">
+    deposit → unlock bonus routing credit
+  </div>
+</button>
+
+</div>
 
               <button
                 onClick={() => setSelected("TORION")}
@@ -523,7 +584,7 @@ export default function OnboardingPage() {
                 <div className="text-[10px] tracking-[0.26em] text-white/45">WALLET + CARD</div>
                 <div className="mt-3 text-2xl md:text-3xl font-semibold tracking-tight text-white/90">Deposit crypto. Spend like a card.</div>
                 <p className="mt-4 text-[14px] md:text-[15px] text-white/75 leading-relaxed">
-                  Deposit USDC to your wallet. Same balance is used for routing and card spending:
+                  Deposit SOL to your wallet. Same balance is used for routing and card spending:
                   <span className="text-white/90 font-semibold"> deposit → route → spend</span>.
                 </p>
 
@@ -724,6 +785,7 @@ export default function OnboardingPage() {
                             e.stopPropagation()
                             goTier(p)
                           }}
+                          
                           className={[
                             "w-full rounded-2xl border px-5 py-4 text-[12px] font-semibold tracking-widest transition-all",
                             cfg.isFree
@@ -736,6 +798,25 @@ export default function OnboardingPage() {
                             {cfg.isFree ? "login → enter" : "checkout → unlock"}
                           </div>
                         </button>
+
+{p === "BULLION" && (
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      router.push("/enterlab/email")
+    }}
+    className="mt-3 w-full rounded-2xl border border-red-400/35 bg-red-500/10 px-5 py-4 text-[12px] font-semibold tracking-widest text-red-100 hover:bg-red-500/20 hover:border-red-400/60 transition-all duration-300"
+    style={{ boxShadow: "0 0 60px rgba(239,68,68,0.15)" }}
+  >
+    EMAIL REGISTER ▸
+    <div className="mt-1 text-[10px] tracking-widest text-red-100/70 font-normal">
+      deposit → unlock bonus routing credit
+    </div>
+  </button>
+)}
+
                       </div>
                     </div>
                   </div>
@@ -803,3 +884,4 @@ export default function OnboardingPage() {
     </main>
   )
 }
+

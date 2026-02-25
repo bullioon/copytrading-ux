@@ -7,12 +7,10 @@ function must(name: string) {
 }
 
 function getPrivateKey() {
-  const key = must("FIREBASE_PRIVATE_KEY")
-  return key.replace(/\\n/g, "\n")
+  return must("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n")
 }
 
-// Re-usa app si ya existe
-const app =
+export const app =
   admin.apps.length > 0
     ? admin.app()
     : admin.initializeApp({
@@ -25,5 +23,3 @@ const app =
 
 export const db = admin.firestore(app)
 export const FieldValue = admin.firestore.FieldValue
-
-

@@ -51,18 +51,24 @@ export async function POST(req: Request) {
     const resetPnl = body.resetPnl === true
     const now = Date.now()
 
-    // leer estado actual para no pisar startedAt / pnl
+    // leer estado actual
     const snap = await ref.get()
     const prev = snap.exists ? (snap.data() as any) : null
 
-    // ✅ si ya hay startedAt válido, lo respetamos (para continuidad al cerrar/abrir app)
-    const startedAt =
-      Number.isFinite(Number(prev?.startedAt)) && Number(prev?.startedAt) > 0
-        ? Number(prev.startedAt)
-        : now
+    // ✅ SOLO continuamos startedAt si el run anterior seguía activo
+    const continuing = prev?.active === true
+
+    const startedAt = continuing
+      ? Number(prev?.startedAt ?? now)
+      : now
 
     const prevPnl = Number.isFinite(Number(prev?.pnlUsd)) ? Number(prev.pnlUsd) : 0
-    const pnlUsd = resetPnl ? 0 : prevPnl
+
+    // ✅ Si NO es continuing (nuevo run), por default resetea pnl a 0 (a menos que tú quieras lo contrario)
+    const pnlUsd = continuing
+      ? (resetPnl ? 0 : prevPnl)
+      : 0
+
     const equityUsd = allocatedUsd + pnlUsd
 
     await ref.set(
@@ -70,19 +76,19 @@ export async function POST(req: Request) {
         active: true,
 
         allocatedUsd,
-        durationSec, // ✅ GUARDAR duration para re-hidratar y no caer a 0
+        durationSec,
         presetId,
 
-        startedAt, // ✅ no pisar si ya existía
+        startedAt,
         lastStartedAt: now,
 
         pnlUsd,
         equityUsd,
 
         // ticks
-        lastTickAt: prev?.lastTickAt ?? now,
+        lastTickAt: now, // ✅ en start/update siempre marca tick actual
 
-        // ✅ IMPORTANTE: si estaba detenido antes, limpia stoppedAt al arrancar
+        // ✅ IMPORTANTE: limpia stoppedAt al arrancar
         stoppedAt: FieldValue.delete(),
 
         updatedAt: FieldValue.serverTimestamp(),
@@ -102,6 +108,7 @@ export async function POST(req: Request) {
       pnlUsd,
       equityUsd,
       resetPnl,
+      continuing,
     })
   } catch (e: any) {
     console.error("engine/run POST error", e)

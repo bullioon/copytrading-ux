@@ -2702,11 +2702,13 @@ if (wallet) {
     x9(endedBy === "AUTO" ? "Window complete. Certificate generated." : "Manual stop confirmed. Certificate generated.", 1)
   }
 
-  useEffect(() => {
-    if (!run.active) return
-    if (run.durationSec > 0 && runRemainingSec <= 0) endRun("AUTO")
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runRemainingSec, run.active])
+ useEffect(() => {
+  if (!run.active) return
+  if (!run.startedAtMs) return
+  if (!(run.durationSec > 0)) return // si durationSec=0 NO auto-end
+  if (runRemainingSec <= 0) endRun("AUTO")
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [runRemainingSec, run.active, run.durationSec, run.startedAtMs])
   
   /* ===== STARTUP PRESETS (TOP STRATEGIES) ===== */
   function applyStartupPreset(id: StartupPresetId, allocationUsd: number) {
@@ -3156,6 +3158,7 @@ onStop={async () => {
   // 1) apaga UI
   setRun(prev => ({ ...prev, active: false, presetId: null, durationSec: 0 }))
 
+  
   // 2) apaga backend (detiene tick)
   const wallet = window.solana?.publicKey?.toBase58?.()
   if (!wallet) return

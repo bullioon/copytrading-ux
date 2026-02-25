@@ -574,7 +574,7 @@ setItems((prev) => {
 
             <div className="flex flex-col sm:flex-row gap-2">
               <a
-                href="https://www.instagram.com/bullions_project/"
+                href="https://www.instagram.com/bullions_6x/"
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => setOpenedIg(true)}
