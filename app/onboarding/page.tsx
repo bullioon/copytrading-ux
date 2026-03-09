@@ -326,9 +326,17 @@ export default function OnboardingPage() {
     router.push(`/pay?tier=${encodeURIComponent(t)}`)
   }
 
+  const goDirectFunding = () => {
+  router.push("/trader-funding")
+}
+
   const goDepositCrypto = () => {
     router.push(`/login?next=${encodeURIComponent("/wallet")}`)
   }
+
+  const goTraderDirect = () => {
+  router.push("/trader-funding")
+}
 
   return (
     <main className="relative min-h-screen bg-black text-white overflow-hidden">
@@ -401,8 +409,13 @@ export default function OnboardingPage() {
 
       {/* CONTENT */}
       <section className="relative z-10 pt-24 md:pt-28 px-4 md:px-6 pb-20">
+
+
         <div className="mx-auto w-full max-w-6xl">
+
           {/* HERO */}
+          
+          
           <div className="text-center">
             <div
               className="mx-auto w-[min(980px,96vw)] rounded-[30px] border border-white/10 bg-black/55 px-6 py-6 md:px-8 md:py-7"
@@ -475,55 +488,44 @@ export default function OnboardingPage() {
               Clean, simple, institutional.
             </p>
 
-            <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                onClick={() => goTier("BULLION")}
-                className={[
-                  "w-full sm:w-auto rounded-2xl border px-7 py-4 text-sm font-semibold tracking-widest transition-all",
-                  PROFILES.BULLION.border,
-                  "bg-black/65 hover:bg-white/[0.06] hover:border-white/30",
-                ].join(" ")}
-                style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 90px ${PROFILES.BULLION.accentGlow}` }}
-              >
-                START FREE ▸
-                <div className="mt-1 text-[10px] tracking-widest text-white/60 font-normal">$50 min · $300 sweet spot</div>
-   
-             </button>
+<div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
+  <button
+    onClick={() => goTier("BULLION")}
+    className={[
+      "w-full sm:w-auto rounded-2xl border px-7 py-4 text-sm font-semibold tracking-widest transition-all",
+      PROFILES.BULLION.border,
+      "bg-black/65 hover:bg-white/[0.06] hover:border-white/30",
+    ].join(" ")}
+    style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 90px ${PROFILES.BULLION.accentGlow}` }}
+  >
+    START FREE ▸
+    <div className="mt-1 text-[10px] tracking-widest text-white/60 font-normal">
+      $50 min · $300 sweet spot
+    </div>
+  </button>
 
-<div className="mt-6 space-y-3">
+  <button
+    onClick={() => setSelected("TORION")}
+    className="w-full sm:w-auto rounded-2xl border border-white/10 bg-black/50 px-7 py-4 text-sm font-semibold tracking-widest text-white/90 hover:bg-white/[0.06] hover:border-white/25 transition"
+  >
+    FTMO CRACKER ▸
+    <div className="mt-1 text-[10px] tracking-widest text-white/60 font-normal">
+      up to $400K routing
+    </div>
+  </button>
 
-
-<button
-  type="button"
-  onClick={() => router.push("/enterlab/email")}
-  className={`
-    w-full rounded-2xl
-    border border-white/10
-    bg-black/50 backdrop-blur-md
-    px-6 py-5
-    text-[13px] font-semibold tracking-widest
-    text-white/85
-    hover:bg-white/[0.05]
-    hover:border-emerald-300/25
-    transition-all duration-300
-  `}
->
-  EMAIL REGISTER ▸
-  <div className="text-[11px] tracking-widest text-white/50 mt-1">
-    deposit → unlock bonus routing credit
-  </div>
-</button>
-
+  <button
+    type="button"
+    onClick={goDirectFunding}
+    className="w-full sm:w-auto rounded-2xl border border-violet-400/30 bg-violet-500/10 px-7 py-4 text-sm font-semibold tracking-widest text-violet-100 hover:bg-violet-500/18 hover:border-violet-300/45 transition-all duration-300"
+    style={{ boxShadow: "0 0 60px rgba(168,85,247,0.16)" }}
+  >
+    DIRECT FUNDING ▸
+    <div className="mt-1 text-[10px] tracking-widest text-violet-100/70 font-normal">
+      Are you a trader? skip onboarding
+    </div>
+  </button>
 </div>
-
-              <button
-                onClick={() => setSelected("TORION")}
-                className="w-full sm:w-auto rounded-2xl border border-white/10 bg-black/50 px-7 py-4 text-sm font-semibold tracking-widest text-white/90 hover:bg-white/[0.06] hover:border-white/25 transition"
-              >
-                VIEW FUNDED ▸
-                <div className="mt-1 text-[10px] tracking-widest text-white/60 font-normal">up to $400K routing</div>
-              </button>
-            </div>
 
             <div className="mt-5 text-[10px] tracking-widest text-white/45">Execution environment only · Not financial advice · Trading involves risk</div>
           </div>
@@ -567,7 +569,11 @@ export default function OnboardingPage() {
                     <button
                       onClick={goDepositCrypto}
                       className="mt-4 w-full rounded-2xl border border-white/10 bg-black/45 px-5 py-4 text-[12px] font-semibold tracking-widest text-white/90 hover:bg-white/[0.06] hover:border-white/25 transition"
+                    
+                    
                     >
+
+                      
                       OPEN WALLET ▸
                       <div className="mt-1 text-[10px] tracking-widest text-white/55 font-normal">login → wallet</div>
                     </button>
@@ -601,6 +607,8 @@ export default function OnboardingPage() {
                   className="mt-7 w-full sm:w-auto rounded-2xl border border-white/12 bg-white/5 px-6 py-4 text-sm font-semibold tracking-widest text-white/90 hover:bg-white/10 hover:border-white/25 transition"
                   style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 60px rgba(0,255,160,0.08)" }}
                 >
+
+                  
                   OPEN WALLET ▸
                   <div className="mt-1 text-[10px] tracking-widest text-white/55 font-normal">login → wallet</div>
                 </button>
@@ -662,6 +670,45 @@ export default function OnboardingPage() {
                 Bullion is the fast start. Hellion scales through MT5. Torion routes funded capital with quality-first execution.
               </p>
             </div>
+
+            {/* DIRECT FUNDING CTA */}
+            
+<div className="mx-auto mt-6 mb-6 max-w-4xl">
+  
+  <button
+    
+    type="button"
+    onClick={goTraderDirect}
+
+    className="w-full rounded-[24px] border border-violet-400/25 bg-violet-500/10 px-5 py-4 text-left transition-all duration-300 hover:bg-violet-500/16 hover:border-violet-300/40"
+    style={{
+      boxShadow:
+        "0 0 0 1px rgba(255,255,255,0.04), 0 0 90px rgba(168,85,247,0.12)",
+      background:
+        "radial-gradient(900px 220px at 50% 0%, rgba(168,85,247,0.14), transparent 70%), rgba(0,0,0,0.55)",
+    }}
+  >
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div>
+        <div className="text-[10px] tracking-[0.24em] text-violet-100/55">
+          BECOME A TRADER
+        </div>
+
+        <div className="mt-1 text-[16px] font-semibold tracking-wide text-violet-50">
+          10K DIRECT FUNDING →
+        </div>
+
+        <div className="mt-1 text-[11px] tracking-widest text-violet-100/55">
+          dedicated trader access · separate route
+        </div>
+      </div>
+
+      <div className="inline-flex shrink-0 rounded-full border border-violet-300/20 bg-violet-400/10 px-3 py-1 text-[10px] tracking-widest text-violet-100">
+        TRADER ACCESS
+      </div>
+    </div>
+  </button>
+</div>
 
             <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-5">
               {(Object.keys(PROFILES) as Profile[]).map((p) => {

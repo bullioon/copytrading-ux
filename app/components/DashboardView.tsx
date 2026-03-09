@@ -28,24 +28,24 @@ import TraderTree from "./TraderTree"
 import StrategySlots from "./StrategySlots"
 import StrategyTransitionPreview from "./StrategyTransitionPreview"
 import { useSixXSFeedback } from "../hooks/useSixXSFeedback"
+import EnterLabDepositPanel from "@/app/components/EnterLabDepositPanel"
 
 // ✅ ESTE IMPORT FALTABA
+
 
 import PhantomDeposit from "@/app/components/PhantomDeposit"
 import type { TriggerOption } from "./PlanBConfigPanel"
 
 import { AllocateCapitalModal } from "@/app/components/AllocateCapitalModal"
+import type { TabKey } from "@/app/lib/types"
 
 // ✅ CHART STYLES
 
 import MiniEquityChartFTMO from "@/app/components/MiniEquityChartFTMO"
 
-
-
+import TraderOfferPanel from "@/app/components/trader-ladder/TraderOfferPanel";
 
 /* ================= TYPES ================= */
-
-type TabKey = "dashboard" | "advanced" | "wallet" | "support"
 
 type WalletTxKind = "DEPOSIT" | "WITHDRAW"
 
@@ -1135,8 +1135,6 @@ const renderPresetButton = (id: StartupPresetId) => {
 }
 
 /* ================= DASHBOARD ================= */
-
-
 function MobileTabBar({
   tab,
   onTab,
@@ -1145,35 +1143,57 @@ function MobileTabBar({
   onTab: (k: TabKey) => void
 }) {
   const items: Array<{ k: TabKey; label: string; sub: string }> = [
-    { k: "dashboard", label: "DASH", sub: "core" },
-    { k: "advanced", label: "ADV", sub: "roles" },
+    { k: "dashboard", label: "COPY", sub: "engine" },
+    { k: "trader", label: "TRDR", sub: "funding" },
+    { k: "advanced", label: "ADV", sub: "settings" },
     { k: "wallet", label: "WALLET", sub: "funds" },
-    { k: "support", label: "SUP", sub: "help" },
   ]
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-black/70 backdrop-blur">
-      <div className="mx-auto max-w-5xl px-3 py-2">
-        <div className="grid grid-cols-4 gap-2">
-         {items.slice(0, 3).map(it => {
-  const active = tab === it.k
-
-  return (
-    <button
-      key={it.k}
-      onClick={() => onTab(it.k)}
-      className={[
-        "rounded-2xl border px-2 py-2 text-center transition",
-        active
-          ? "border-white/25 bg-white/10 text-white"
-          : "border-white/10 bg-black/30 text-white/60"
-      ].join(" ")}
+    <div
+      className="fixed left-2 right-2 z-[120]"
+      style={{ bottom: "max(10px, env(safe-area-inset-bottom))" }}
     >
-      <div className="text-xs font-semibold">{it.label}</div>
-      <div className="text-[10px] opacity-50">{it.sub}</div>
-    </button>
-  )
-})}
+      <div
+        className="mx-auto max-w-5xl rounded-[26px] border border-white/10 bg-black/88 p-2 backdrop-blur-2xl"
+        style={{
+          boxShadow:
+            "0 0 0 1px rgba(255,255,255,0.05), 0 16px 42px rgba(0,0,0,0.85), 0 0 70px rgba(0,255,120,0.08)",
+        }}
+      >
+        <div className="grid grid-cols-4 gap-2">
+          {items.map((it) => {
+            const active = tab === it.k
+
+            return (
+              <button
+                key={it.k}
+                onClick={() => onTab(it.k)}
+                className={[
+                  "relative min-h-[72px] rounded-[20px] border px-2 py-3 text-center transition-all duration-200",
+                  active
+                    ? "border-white/20 bg-white/[0.10] text-white shadow-[0_0_26px_rgba(0,255,120,0.12)]"
+                    : "border-white/6 bg-white/[0.02] text-white/48 hover:bg-white/[0.04]",
+                ].join(" ")}
+              >
+                {active ? (
+                  <div className="absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+                ) : null}
+
+                {active ? (
+                  <div className="absolute bottom-1.5 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(16,185,129,0.95)]" />
+                ) : null}
+
+                <div className="text-[12px] font-semibold tracking-[0.16em]">
+                  {it.label}
+                </div>
+
+                <div className="mt-1 text-[10px] text-white/38">
+                  {it.sub}
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -1182,6 +1202,7 @@ function MobileTabBar({
 
 const TABS: ReadonlyArray<readonly [TabKey, string]> = [
   ["dashboard", "DASH"],
+  ["trader", "TRADER"],
   ["advanced", "ADVANCED"],
   ["wallet", "WALLET"],
   ["support", "SUPPORT"],
@@ -1209,6 +1230,7 @@ function shuffle<T>(a: T[]) {
 
 export default function DashboardView({ account: walletAccount }: { account: Account }) {
   const router = useRouter()
+
 
   // ================= ANTI-SPAM GUARDS =================
  // evita refreshAll en paralelo
@@ -3003,9 +3025,6 @@ const walletBalanceUsd = realBalanceUsd
           </div>
         </div>
       </div>
-
-      {/* Bottom tabs in lite too */}
-      {isMobile ? <MobileTabBar tab={tab} onTab={goTab} /> : null}
     </main>
   )
 }
@@ -3024,6 +3043,8 @@ return (
     <Toast toast={toast} />
 
     <div className="p-4 md:p-6 space-y-4 md:space-y-6 pb-28">
+
+    
 
       {/* ================= TOP MENU (DESKTOP) ================= */}
       {!isMobile ? (
@@ -3049,6 +3070,7 @@ return (
         </div>
       ) : null}
 
+
       {/* ================= DASHBOARD ================= */}
       {tab === "dashboard" ? (
         <section
@@ -3056,6 +3078,7 @@ return (
           style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 70px ${theme.glow}` }}
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:gap-6">     
+
 
   {/* LEFT */}
   <div className="md:col-span-8 space-y-4 md:space-y-6">
@@ -3098,6 +3121,7 @@ return (
     </div>
   </div>
 </section>
+
     
     {/* EQUITY */}
 
@@ -3240,102 +3264,37 @@ onStop={async () => {
       onUpgrade={() => router.push(`/onboarding?target=pro`)}
     />
 
-    {/* DEPOSIT */}
-    <div className="rounded-[24px] border border-white/10 bg-black/45 p-4">
-      <div className="text-[10px] tracking-widest text-white/55">DEPOSIT</div>
-      <div className="mt-3">
 
-{/* ================= PHANTOM DEPOSIT PANEL (WRAPPER UI) ================= */}
-<div className="rounded-[28px] border border-white/10 bg-black/45 p-5 neon-card">
+{/* DEPOSIT */}
+<div className="rounded-[24px] border border-white/10 bg-black/45 p-4">
+  <div className="text-[10px] tracking-widest text-white/55">DEPOSIT</div>
 
-  {/* HEADER (FIXED LAYOUT) */}
-  <div className="flex items-start justify-between gap-3">
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
-          <img
-            src="/phantom.svg"
-            alt="Phantom"
-            className="h-4 w-4 object-contain opacity-95"
-            draggable={false}
-          />
-        </div>
-
-        <div className="text-[10px] tracking-widest text-white/60">PHANTOM DEPOSIT</div>
-
-        <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
-          ONLY
-        </span>
-        <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[10px] tracking-widest text-emerald-100">
-          SOLANA
-        </span>
-        <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
-          Mainnet
-        </span>
-      </div>
-
-      <div className="mt-2 text-[18px] font-semibold text-white/90">
-        Bullions balance: <span className="tabular-nums">{fmtUsd(uiBalanceUsd)}</span>
-      </div>
-
-      <div className="mt-1 text-[12px] text-white/55">
-        Only Phantom is supported. Connect Phantom to credit your internal balance.
-      </div>
-    </div>
-
-    <div className="shrink-0 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[11px] tracking-widest text-white/70">
-      phantom
-    </div>
-  </div>
-
-  {/* CTA (opcional, pero alineado) */}
-  {isBullion && realBalanceUsd < 50 ? (
-    <div className="mt-3 rounded-2xl border border-violet-300/25 bg-black/30 px-4 py-3">
-      <div className="text-[12px] text-white/80">
-        <span className="text-violet-200 font-semibold">USE PHANTOM WALLET</span>{" "}
-        <a
-          href="https://phantom.com"
-          target="_blank"
-          rel="noreferrer"
-          className="text-violet-200 underline underline-offset-4 hover:text-violet-100"
-        >
-          to add your first deposit!
-        </a>
-      </div>
-    </div>
-  ) : null}
-
-  {/* BODY */}
-  <div className="mt-4">
-
-<button
-  type="button"
-  onClick={() => goTab("wallet")}
-  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[11px] font-semibold tracking-widest text-white/80 hover:bg-white/10"
->
-  OPEN WALLET DEPOSIT →
-</button>
-
-</div>
-
-  {/* FOOTER LINE */}
-  <div className="mt-3 text-[10px] text-white/40">
-    Confirmed tx → updates dashboard balance.
+  <div className="mt-3">
+    <EnterLabDepositPanel
+      uiBalanceUsd={uiBalanceUsd}
+      isBullion={isBullion}
+      goTab={goTab}
+    />
   </div>
 </div>
 
+</div> {/* ✅ cierra md:col-span-4 */}
+</div> {/* ✅ cierra el grid (LEFT/RIGHT) */}
 
-    </div>
-  </div>
-</div>
-</div>
-        </section>
-      ) : null}
+</section>
+) : null}
 
+{tab === "trader" ? (
+  <TraderOfferPanel
+    glow={theme.glow}
+    feeUsd={160}
+    onStart={() => router.push("/onboarding?target=enterlab")}
+  />
 
-      {/* ================= ADVANCED ================= */}
-      {tab === "advanced" ? (
-        <div className="space-y-10 panel-pop">
+) : tab === "advanced" ? (
+
+  <div className="space-y-10 panel-pop">
+
           <section className="rounded-[28px] border border-white/10 bg-black/55 p-5 neon-card">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -3534,12 +3493,10 @@ onStop={async () => {
               </button>
             ) : null}
           </div>
-        </div>
-      ) : null}
+    </div>
 
-      {/* WALLET / SUPPORT aquí si los tienes */}
+) : tab === "support" ? (
 
-{tab === "support" && (
   <section className="rounded-[28px] border border-white/10 bg-black/40 p-6 neon-card">
     <div className="flex items-center justify-between mb-6">
       <div>
@@ -3576,55 +3533,29 @@ onStop={async () => {
       </div>
     </div>
   </section>
-)}
-    
-    </div>
 
+) : tab === "wallet" ? (
 
-<AllocateCapitalModal
-  open={allocOpen}
-  maxUsd={bigMetricUsd}
-  onClose={() => {
-    setAllocOpen(false)
-    setAllocContext(null)
-  }}
-  onConfirm={confirmAllocation}
-/>
-
-    {diplomaOpen && diploma ? (
-      <DiplomaModal
-        theme={theme}
-        data={diploma}
-        onClose={() => setDiplomaOpen(false)}
-        onStop={() => setDiplomaOpen(false)}
-      />
-    ) : null}
-
-    {/* BOTTOM MENU (mobile) */}
-{isMobile ? <MobileTabBar tab={tab} onTab={goTab} /> : null}
-
-
-{/* ================= WALLET ================= */}
-
-{tab === "wallet" ? (
   <section
+
     className="rounded-[28px] border border-white/10 bg-black/55 p-5 neon-card"
     style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.05), 0 0 70px ${theme.glow}` }}
   >
+    
     {/* HEADER */}
     <div className="flex items-start justify-between gap-3">
       <div>
         <div className="text-[10px] tracking-widest text-white/45">WALLET</div>
         <div className="mt-1 text-[13px] text-white/90 font-semibold">Phantom-style dashboard</div>
         <div className="mt-1 text-[12px] text-white/55">
-          Visual only (for now). Deposit works via Phantom panel.
+          Deposits: SOL (Phantom Pay) or BTC (network transfer). Minimum $100.
         </div>
       </div>
 
       <div className="shrink-0 rounded-2xl border border-white/10 bg-black/40 px-3 py-2">
         <div className="text-[10px] tracking-widest text-white/45">ACCOUNT</div>
         <div className="mt-1 text-[11px] text-white/90 font-semibold tabular-nums">
-  {fmtUsd(realBalanceUsd)}
+          {fmtUsd(realBalanceUsd)}
         </div>
       </div>
     </div>
@@ -3633,6 +3564,7 @@ onStop={async () => {
     <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* LEFT */}
       <div className="w-full lg:w-[420px] shrink-0">
+        {/* CARD */}
         <div
           className="relative overflow-hidden rounded-[28px] p-6"
           onMouseEnter={() => setHoverCard(true)}
@@ -3641,7 +3573,7 @@ onStop={async () => {
             boxShadow:
               "0 0 0 1px rgba(255,255,255,0.05), 0 0 44px rgba(124,58,237,0.14), 0 0 52px rgba(34,197,94,0.10)",
             background:
-              "radial-gradient(900px 420px at 18% 0%, rgba(34,197,94,0.16), transparent 55%), radial-gradient(760px 360px at 90% 18%, rgba(124,58,237,0.18), transparent 55%), rgba(0,0,0,0.46)",
+              "radial-gradient(900px 420px at 18% 0%, rgba(124,58,237,0.18), transparent 55%), radial-gradient(760px 360px at 90% 18%, rgba(34,197,94,0.14), transparent 55%), rgba(0,0,0,0.46)",
           }}
         >
           {/* subtle grid */}
@@ -3659,7 +3591,7 @@ onStop={async () => {
             className="pointer-events-none absolute -top-10 left-0 right-0 h-24 opacity-80"
             style={{
               background:
-                "radial-gradient(420px 90px at 25% 60%, rgba(34,197,94,0.28), transparent 60%), radial-gradient(420px 90px at 75% 60%, rgba(124,58,237,0.22), transparent 60%)",
+                "radial-gradient(420px 90px at 25% 60%, rgba(124,58,237,0.26), transparent 60%), radial-gradient(420px 90px at 75% 60%, rgba(34,197,94,0.18), transparent 60%)",
             }}
           />
 
@@ -3669,19 +3601,24 @@ onStop={async () => {
               <div className="flex items-center gap-2">
                 <span className="inline-flex h-2 w-2 rounded-full bg-emerald-300/85" />
                 <div className="text-[10px] tracking-widest text-white/65">BULLIONS CARD WALLET</div>
+
+                {/* network chips */}
                 <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
-                  SOLANA
+                  SOL
+                </span>
+                <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] tracking-widest text-white/70">
+                  BTC
                 </span>
               </div>
 
               <div className="mt-3 text-[30px] font-semibold tracking-tight text-white/95 tabular-nums">
-                {fmtUsd(cardShownUsd, { decimals: 2 })}
+                {fmtUsd(uiBalanceUsd)}
               </div>
 
               <div className="mt-1 text-[12px] text-white/60">
                 {hoverCard
-                  ? "Right now: $0 — obtain your card to unlock deposits."
-                  : "Demo balance (visual) — Phantom inspired"}
+                  ? "Deposit to credit your internal USD balance."
+                  : "Internal USD balance · Phantom-inspired"}
               </div>
             </div>
 
@@ -3701,7 +3638,6 @@ onStop={async () => {
             </div>
           </div>
 
-
           {/* NUMBER ROW */}
           <div className="relative mt-6 flex items-center justify-between gap-3">
             <div className="text-[12px] text-white/70 tracking-[0.22em] tabular-nums">•••• •••• •••• 4821</div>
@@ -3710,24 +3646,29 @@ onStop={async () => {
 
           {/* CTA overlay on hover */}
           {hoverCard ? (
-            <div className="relative mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3">
-              <div className="text-[10px] tracking-widest text-emerald-100/80">OBTAIN YOUR CARD</div>
+            <div className="relative mt-4 rounded-2xl border border-violet-300/25 bg-violet-300/10 px-4 py-3">
+              <div className="text-[10px] tracking-widest text-violet-100/80">DEPOSIT FLOW</div>
               <div className="mt-1 text-[12px] text-white/90 font-semibold">
-                Connect Phantom → deposit → unlock card balance
+                Create invoice → send crypto → auto-confirm
               </div>
 
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
                   className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-[11px] tracking-widest text-white/85 transition hover:bg-white/5"
+                  onClick={() => {
+                    const el = document.getElementById("wallet-deposit")
+                    el?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }}
                 >
-                  GET CARD →
+                  DEPOSIT →
                 </button>
                 <button
                   type="button"
                   className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-[11px] tracking-widest text-white/70 transition hover:bg-white/5"
+                  onClick={() => goTab("support")}
                 >
-                  LEARN
+                  SUPPORT
                 </button>
               </div>
             </div>
@@ -3745,7 +3686,7 @@ onStop={async () => {
             >
               <div className="text-[10px] tracking-widest text-white/45">RECEIVE</div>
               <div className="mt-1 text-[12px] font-semibold text-white/90">Deposit</div>
-              <div className="mt-1 text-[10px] text-white/45">Phantom</div>
+              <div className="mt-1 text-[10px] text-white/45">SOL / BTC</div>
             </button>
 
             <button
@@ -3764,79 +3705,61 @@ onStop={async () => {
             <button
               type="button"
               className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-left transition hover:bg-white/6"
+              onClick={() => x9("Card waitlist (soon)", 1)}
             >
               <div className="text-[10px] tracking-widest text-white/45">CARD</div>
               <div className="mt-1 text-[12px] font-semibold text-white/90">Get card</div>
-              <div className="mt-1 text-[10px] text-white/45">mint</div>
+              <div className="mt-1 text-[10px] text-white/45">soon</div>
             </button>
           </div>
 
-{/* ✅ TRANSACTIONS (FUNCIONAL) */}
-<div className="relative mt-6 rounded-[22px] border border-white/10 bg-black/35 p-4">
-  <div className="flex items-center justify-between">
-    <div className="text-[10px] tracking-widest text-white/55">
-      TRANSACTIONS
-    </div>
-    <div className="text-[10px] tracking-widest text-white/35">
-      {walletTxsSorted.length}
-    </div>
-  </div>
-
-  <div className="mt-3 space-y-2">
-    {walletTxsSorted.slice(0, 6).map(tx => (
-      <div
-        key={tx.id}
-        className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-xl border border-white/10 bg-black/40 flex items-center justify-center text-white/80">
-                {tx.kind === "DEPOSIT" ? "↓" : "↑"}
-              </div>
-
-              <div className="min-w-0">
-                <div className="text-[11px] text-white/85 font-semibold truncate">
-                  {kindLabel(tx.kind)}
-                </div>
-                <div className="text-[10px] text-white/45 truncate">
-                  {tx.note ?? tx.token}
-                </div>
-              </div>
+          {/* TRANSACTIONS */}
+          <div className="relative mt-6 rounded-[22px] border border-white/10 bg-black/35 p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] tracking-widest text-white/55">TRANSACTIONS</div>
+              <div className="text-[10px] tracking-widest text-white/35">{walletTxsSorted.length}</div>
             </div>
 
-            <div className="mt-2 text-[10px] text-white/35">
-              {fmtShortTime(tx.ts)}
+            <div className="mt-3 space-y-2">
+              {walletTxsSorted.slice(0, 6).map((tx) => (
+                <div key={tx.id} className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-xl border border-white/10 bg-black/40 flex items-center justify-center text-white/80">
+                          {tx.kind === "DEPOSIT" ? "↓" : "↑"}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-white/85 font-semibold truncate">{kindLabel(tx.kind)}</div>
+                          <div className="text-[10px] text-white/45 truncate">{tx.note ?? tx.token}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-[10px] text-white/35">{fmtShortTime(tx.ts)}</div>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <div className={["inline-flex rounded-xl border px-2.5 py-1 text-[10px] tracking-widest", kindTone(tx.kind)].join(" ")}>
+                        {tx.status ?? "CONFIRMED"}
+                      </div>
+
+                      <div className="mt-2 text-[12px] font-semibold text-white/90 tabular-nums">
+                        {tx.kind === "WITHDRAW" ? "-" : "+"}
+                        {fmtUsd(tx.amountUsd)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {!walletTxsSorted.length ? (
+                <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-[11px] text-white/55">
+                  No transactions yet.
+                </div>
+              ) : null}
             </div>
           </div>
-
-          <div className="shrink-0 text-right">
-            <div
-              className={[
-                "inline-flex rounded-xl border px-2.5 py-1 text-[10px] tracking-widest",
-                kindTone(tx.kind),
-              ].join(" ")}
-            >
-              {tx.status ?? "CONFIRMED"}
-            </div>
-
-            <div className="mt-2 text-[12px] font-semibold text-white/90 tabular-nums">
-              {tx.kind === "WITHDRAW" ? "-" : "+"}
-              {fmtUsd(tx.amountUsd)}
-            </div>
-          </div>
-        </div>
-      </div>
-    ))}
-
-    {!walletTxsSorted.length ? (
-      <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-[11px] text-white/55">
-        No transactions yet.
-      </div>
-    ) : null}
-  </div>
-</div>
-
         </div>
       </div>
 
@@ -3846,53 +3769,19 @@ onStop={async () => {
         <div id="wallet-deposit" className="rounded-[24px] border border-white/10 bg-black/45 p-4">
           <div className="flex items-center justify-between">
             <div className="text-[10px] tracking-widest text-white/55">DEPOSIT</div>
-            <div className="text-[10px] tracking-widest text-white/35">Phantom</div>
+            <div className="text-[10px] tracking-widest text-white/35">Phantom Pay (SOL) · BTC</div>
           </div>
 
           <div className="mt-3">
-            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 bg-black/40">
-                  <img src="/phantom.svg" alt="Phantom" className="h-4 w-4 object-contain opacity-95" draggable={false} />
-                </div>
-                <div className="text-[10px] tracking-widest text-white/60">PHANTOM DEPOSIT</div>
-              </div>
+            <EnterLabDepositPanel uiBalanceUsd={uiBalanceUsd} isBullion={isBullion} goTab={goTab} />
+          </div>
 
-              <div className="mt-3">
-                
-                <PhantomDeposit
-              
-  network="mainnet-beta"
-  minUsd={depositMinUsd}
-  
-  onBalanceCredit={(usdAmount) => {
-    const credit = Math.max(0, Number(usdAmount) || 0)
-    const wallet = window.solana?.publicKey?.toBase58?.()
-    if (wallet) refreshAll(wallet)
-
-    x9("Deposit confirmed ✓", 1)
-
-    if (credit > 0) {
-      pushWalletTx({
-        kind: "DEPOSIT",
-        amountUsd: credit,
-        token: "SOL",
-        status: "CONFIRMED",
-        note: "Deposit credited · Phantom · Solana mainnet",
-      })
-    }
-  }}
-/>
-              </div>
-
-              <div className="mt-2 text-[10px] text-white/40">
-                Confirmed tx → credits internal balance.
-              </div>
-            </div>
+          <div className="mt-2 text-[10px] text-white/40">
+            SOL → Phantom Pay optional · BTC → send only on Bitcoin network.
           </div>
         </div>
 
-        {/* WITHDRAW (visual, tx funcional PENDING) */}
+        {/* WITHDRAW (visual) */}
         <div id="wallet-withdraw" className="rounded-[24px] border border-white/10 bg-black/45 p-4">
           <div className="flex items-center justify-between">
             <div className="text-[10px] tracking-widest text-white/55">WITHDRAW</div>
@@ -3953,6 +3842,29 @@ onStop={async () => {
     </div>
   </section>
 ) : null}
+</div>
+
+<AllocateCapitalModal
+  open={allocOpen}
+  maxUsd={bigMetricUsd}
+  onClose={() => {
+    setAllocOpen(false)
+    setAllocContext(null)
+  }}
+  onConfirm={confirmAllocation}
+/>
+
+{diplomaOpen && diploma ? (
+  <DiplomaModal
+    theme={theme}
+    data={diploma}
+    onClose={() => setDiplomaOpen(false)}
+    onStop={() => setDiplomaOpen(false)}
+  />
+) : null}
+     <div className="md:hidden">
+  <MobileTabBar tab={tab} onTab={goTab} />
+</div>
   </main>
 )
 

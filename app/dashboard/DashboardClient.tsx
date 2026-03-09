@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useSearchParams } from "next/navigation"
-import DashboardView from "@/app/components/DashboardView"
+import DashboardView from "../components/DashboardView"
 import type { Account } from "@/app/types/account"
 
 function getAccountByMode(mode: string): Account {
