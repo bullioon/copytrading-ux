@@ -1155,8 +1155,7 @@ function MobileTabBar({
       style={{ bottom: "max(10px, env(safe-area-inset-bottom))" }}
     >
       <div
-        className="mx-auto max-w-5xl rounded-[26px] border border-white/10 bg-black/88 p-2 backdrop-blur-2xl"
-        style={{
+          className="mx-auto max-w-5xl rounded-[26px] border border-white/10 bg-black p-2"        style={{
           boxShadow:
             "0 0 0 1px rgba(255,255,255,0.05), 0 16px 42px rgba(0,0,0,0.85), 0 0 70px rgba(0,255,120,0.08)",
         }}
