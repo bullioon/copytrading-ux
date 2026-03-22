@@ -168,14 +168,25 @@ export default function EquityCard({
     ]
   }, [unit, firstEquity])
 
-  const healthLabel =
-    health === "stable"
-      ? "STABLE"
-      : health === "warning"
-        ? "WARNING"
-        : health === "critical"
-          ? "CRITICAL"
-          : "—"
+const healthLabel =
+  health === "stable"
+    ? "STABLE"
+    : health === "warning"
+    ? "WARNING"
+    : health === "critical"
+    ? "CRITICAL"
+    : health === "optimal"
+    ? "OPTIMAL"
+    : "—"
+
+    const healthTone =
+  healthLabel === "OPTIMAL"
+    ? "text-emerald-400"
+    : healthLabel === "STABLE"
+    ? "text-cyan-400"
+    : healthLabel === "WARNING"
+    ? "text-amber-400"
+    : "text-rose-400"
 
   return (
     <section className={`rounded-3xl border ${border} bg-black/60 p-4`}>
@@ -225,7 +236,10 @@ export default function EquityCard({
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <HudPill label="HEALTH" value={healthLabel} />
+               <HudPill
+  label="HEALTH"
+  value={healthLabel}
+/>
                 <HudPill label="DD NOW" value={`${ddNowPct.toFixed(2)}%`} />
                 <HudPill label="DD WORST" value={`${ddWorstPct.toFixed(2)}%`} />
                 <HudPill label="TARGET" value={fmtUsd(missionTargetUsd)} />
