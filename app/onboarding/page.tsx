@@ -539,7 +539,7 @@ export default function OnboardingPage() {
             <h1 className="mt-8 text-5xl md:text-7xl font-semibold tracking-tight leading-[1.05]">
               Grow your capital
               <span className={cn("block mt-3", active.text)}>
-                Non a fully human system              </span>
+                Powered by non-human execution              </span>
             </h1>
 
             <p className="mt-6 text-[16px] text-white/75 max-w-2xl mx-auto leading-relaxed">
