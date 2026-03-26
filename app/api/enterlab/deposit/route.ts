@@ -42,10 +42,22 @@ export async function POST(req: Request) {
       )
     }
 
-    const treasurySOL = process.env.TREASURY_SOL || ""
-    const treasuryBTC = process.env.TREASURY_BTC || ""
-    const treasuryUSDC = process.env.TREASURY_USDC || ""
+const treasurySOL =
+  process.env.ENTERLAB_TREASURY_SOL ||
+  process.env.TREASURY_SOL ||
+  ""
 
+const treasuryBTC =
+  process.env.ENTERLAB_TREASURY_BTC ||
+  process.env.TREASURY_BTC ||
+  ""
+
+const treasuryUSDC =
+  process.env.ENTERLAB_TREASURY_USDC ||
+  process.env.TREASURY_USDC ||
+  ""
+
+  
     const TREASURY_MAP: Record<Chain, string> = {
       SOL: treasurySOL,
       BTC: treasuryBTC,
