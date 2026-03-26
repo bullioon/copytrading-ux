@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/firebaseAdmin"
 
-type Chain = "SOL" | "BTC"
+type Chain = "SOL" | "BTC" | "USDC"
 type Tier = "BULLION" | "HELLION" | "TORION"
 
 const MIN_BULLION_USD = 100
 
-function asTier(v: any): Tier {
+function asTier(v: unknown): Tier {
   const t = String(v || "BULLION").toUpperCase()
   if (t === "HELLION") return "HELLION"
   if (t === "TORION") return "TORION"
   return "BULLION"
 }
 
-function asChain(v: any): Chain {
+function asChain(v: unknown): Chain {
   const c = String(v || "SOL").toUpperCase()
   if (c === "BTC") return "BTC"
+  if (c === "USDC") return "USDC"
   return "SOL"
 }
 
@@ -26,20 +27,14 @@ export async function POST(req: Request) {
     const tier = asTier(body?.tier)
     const chain = asChain(body?.chain)
 
-    // uno de los dos para identificar al usuario
     const email = String(body?.email || "").trim().toLowerCase()
     const wallet = String(body?.wallet || "").trim()
 
-    if (!email && !wallet) {
-      return NextResponse.json({ error: "Missing identifier (email or wallet)" }, { status: 400 })
-    }
-
-    const amountUsd = Number(body?.amountUsd || 0)
+    const amountUsd = Number(body?.amountUsd || body?.depositAmount || 0)
     if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
       return NextResponse.json({ error: "Invalid amountUsd" }, { status: 400 })
     }
 
-    // ✅ Bullion: mínimo $100
     if (tier === "BULLION" && amountUsd < MIN_BULLION_USD) {
       return NextResponse.json(
         { error: `BULLION minimum is $${MIN_BULLION_USD}` },
@@ -47,27 +42,39 @@ export async function POST(req: Request) {
       )
     }
 
-    // Tesorerías por chain (env)
-    const treasurySOL = process.env.NEXT_PUBLIC_TREASURY_SOL || process.env.TREASURY_SOL || ""
-    const treasuryBTC = process.env.NEXT_PUBLIC_TREASURY_BTC || process.env.TREASURY_BTC || ""
+    // Server-side envs only
+    const treasurySOL = process.env.TREASURY_SOL || ""
+    const treasuryBTC = process.env.TREASURY_BTC || ""
+    const treasuryUSDC = process.env.TREASURY_USDC || ""
 
-    const address = chain === "SOL" ? treasurySOL : treasuryBTC
+    const TREASURY_MAP: Record<Chain, string> = {
+      SOL: treasurySOL,
+      BTC: treasuryBTC,
+      USDC: treasuryUSDC,
+    }
+
+    const address = TREASURY_MAP[chain]
     if (!address) {
       return NextResponse.json(
-        { error: `Missing treasury address for ${chain} (env)` },
+        { error: `Missing treasury address for ${chain}` },
         { status: 500 }
       )
     }
 
     const now = Date.now()
-    const expiresAt = now + 20 * 60 * 1000 // 20 min
+    const expiresAt = now + 20 * 60 * 1000
 
-    // URI para QR (simple)
-    // (Luego refinamos para incluir amount en BTC si quieres.)
-    const uri = chain === "BTC" ? `bitcoin:${address}` : `solana:${address}`
+    let uri = ""
+    if (chain === "BTC") {
+      uri = `bitcoin:${address}`
+    } else if (chain === "SOL") {
+      uri = `solana:${address}`
+    } else {
+      // USDC on Solana wallet address
+      uri = `solana:${address}`
+    }
 
     const ref = await db.collection("enterLabDeposits").add({
-      // identidad
       email: email || null,
       wallet: wallet || null,
 
@@ -96,7 +103,10 @@ export async function POST(req: Request) {
     })
   } catch (e: any) {
     console.error("enterlab/deposit POST error:", e)
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 })
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    )
   }
 }
 
