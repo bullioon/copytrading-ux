@@ -39,3 +39,132 @@ body {
 .sixxs-pulse-good { animation: sixxsPulseGood 650ms ease-out 1; }
 .sixxs-pulse-warn { animation: sixxsPulseWarn 650ms ease-out 1; }
 .sixxs-pulse-info { animation: sixxsPulseInfo 650ms ease-out 1; }
+
+@keyframes cell1 {
+  0% { transform: translate(0px, 0px) scale(1); }
+  50% { transform: translate(6px, -4px) scale(1.2); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes cell2 {
+  0% { transform: translate(0px, 0px) scale(1); }
+  50% { transform: translate(-5px, 5px) scale(1.3); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes cell3 {
+  0% { transform: translate(0px, 0px) scale(1); }
+  50% { transform: translate(4px, 4px) scale(0.8); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.animate-cell1 {
+  animation: cell1 6s ease-in-out infinite;
+}
+
+.animate-cell2 {
+  animation: cell2 8s ease-in-out infinite;
+}
+
+.animate-cell3 {
+  animation: cell3 7s ease-in-out infinite;
+}
+
+
+@keyframes proton1 {
+  0% { transform: translate(0px, -6px) scale(1); }
+  50% { transform: translate(4px, -2px) scale(1.2); }
+  100% { transform: translate(0px, -6px) scale(1); }
+}
+
+@keyframes proton2 {
+  0% { transform: translate(-5px, 4px) scale(1); }
+  50% { transform: translate(-2px, 0px) scale(1.3); }
+  100% { transform: translate(-5px, 4px) scale(1); }
+}
+
+@keyframes proton3 {
+  0% { transform: translate(5px, 4px) scale(1); }
+  50% { transform: translate(2px, 0px) scale(0.9); }
+  100% { transform: translate(5px, 4px) scale(1); }
+}
+
+.animate-proton1 {
+  animation: proton1 5s ease-in-out infinite;
+}
+
+.animate-proton2 {
+  animation: proton2 6s ease-in-out infinite;
+}
+
+.animate-proton3 {
+  animation: proton3 5.5s ease-in-out infinite;
+}
+
+/* BASE PARTICLE */
+.proton {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #c084fc, #6366f1);
+  box-shadow: 0 0 20px rgba(168,85,247,0.9);
+  transition: all 0.6s ease;
+}
+
+/* MOVIMIENTO ORGÁNICO */
+@keyframes floatA {
+  0%   { transform: translate(0px, -14px) scale(1); }
+  50%  { transform: translate(10px, -4px) scale(1.3); }
+  100% { transform: translate(0px, -14px) scale(1); }
+}
+
+@keyframes floatB {
+  0%   { transform: translate(-12px, 8px) scale(1); }
+  50%  { transform: translate(-4px, 2px) scale(1.2); }
+  100% { transform: translate(-12px, 8px) scale(1); }
+}
+
+@keyframes floatC {
+  0%   { transform: translate(12px, 8px) scale(1); }
+  50%  { transform: translate(4px, 2px) scale(0.9); }
+  100% { transform: translate(12px, 8px) scale(1); }
+}
+
+.proton-a { animation: floatA 5s ease-in-out infinite; }
+.proton-b { animation: floatB 6s ease-in-out infinite; }
+.proton-c { animation: floatC 5.5s ease-in-out infinite; }
+
+/* MAGNETIC FIELD ROTATION */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+/* 🧲 HOVER = RECONFIGURACIÓN (INTELIGENCIA) */
+.group:hover .proton-a {
+  transform: translate(0px, -6px) scale(1.4);
+}
+
+.group:hover .proton-b {
+  transform: translate(-6px, 6px) scale(1.4);
+}
+
+.group:hover .proton-c {
+  transform: translate(6px, 6px) scale(1.4);
+}
+
+/* MICRO JITTER (VIDA) */
+.proton::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: rgba(168,85,247,0.2);
+  filter: blur(6px);
+  opacity: 0.6;
+}

@@ -1,115 +1,60 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/firebaseAdmin"
 
-type Chain = "SOL" | "BTC" | "USDC"
-type Tier = "BULLION" | "HELLION" | "TORION"
-
-const MIN_BULLION_USD = 100
-
-function asTier(v: unknown): Tier {
-  const t = String(v || "BULLION").toUpperCase()
-  if (t === "HELLION") return "HELLION"
-  if (t === "TORION") return "TORION"
-  return "BULLION"
-}
-
-function asChain(v: unknown): Chain {
-  const c = String(v || "SOL").toUpperCase()
-  if (c === "BTC") return "BTC"
-  if (c === "USDC") return "USDC"
-  return "SOL"
-}
-
-export async function POST(req: Request) {
+export async function GET(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}))
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get("id")
 
-    const tier = asTier(body?.tier)
-    const chain = asChain(body?.chain)
-
-    const email = String(body?.email || "").trim().toLowerCase()
-    const wallet = String(body?.wallet || "").trim()
-
-    const amountUsd = Number(body?.amountUsd || body?.depositAmount || 0)
-    if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
-      return NextResponse.json({ error: "Invalid amountUsd" }, { status: 400 })
-    }
-
-    if (tier === "BULLION" && amountUsd < MIN_BULLION_USD) {
+    if (!id) {
       return NextResponse.json(
-        { error: `BULLION minimum is $${MIN_BULLION_USD}` },
+        { error: "Missing deposit id" },
         { status: 400 }
       )
     }
 
-    // Server-side envs only
-    const treasurySOL = process.env.TREASURY_SOL || ""
-    const treasuryBTC = process.env.TREASURY_BTC || ""
-    const treasuryUSDC = process.env.TREASURY_USDC || ""
+    const ref = db.collection("enterLabDeposits").doc(id)
+    const snap = await ref.get()
 
-    const TREASURY_MAP: Record<Chain, string> = {
-      SOL: treasurySOL,
-      BTC: treasuryBTC,
-      USDC: treasuryUSDC,
-    }
-
-    const address = TREASURY_MAP[chain]
-    if (!address) {
+    if (!snap.exists) {
       return NextResponse.json(
-        { error: `Missing treasury address for ${chain}` },
-        { status: 500 }
+        { error: "Deposit not found" },
+        { status: 404 }
       )
     }
 
-    const now = Date.now()
-    const expiresAt = now + 20 * 60 * 1000
+    const data = snap.data()
 
-    let uri = ""
-    if (chain === "BTC") {
-      uri = `bitcoin:${address}`
-    } else if (chain === "SOL") {
-      uri = `solana:${address}`
-    } else {
-      // USDC on Solana wallet address
-      uri = `solana:${address}`
+    const now = Date.now()
+
+    // expiración automática
+    if (data?.status === "pending" && data?.expiresAt && now > data.expiresAt) {
+      await ref.update({
+        status: "expired",
+      })
+
+      return NextResponse.json({
+        status: "expired",
+        debugRoute: "ENTERLAB_DEPOSIT_STATUS_V1",
+      })
     }
 
-    const ref = await db.collection("enterLabDeposits").add({
-      email: email || null,
-      wallet: wallet || null,
-
-      tier,
-      chain,
-      amountUsd,
-
-      address,
-      uri,
-
-      status: "pending",
-      createdAt: now,
-      expiresAt,
-    })
-
     return NextResponse.json({
-      ok: true,
-      id: ref.id,
-      tier,
-      chain,
-      amountUsd,
-      address,
-      uri,
-      status: "pending",
-      expiresAt,
+      status: data?.status || "pending",
+      chain: data?.chain,
+      tier: data?.tier,
+      amountUsd: data?.amountUsd,
+      debugRoute: "ENTERLAB_DEPOSIT_STATUS_V1",
     })
   } catch (e: any) {
-    console.error("enterlab/deposit POST error:", e)
+    console.error("enterlab/deposit/status error:", e)
+
     return NextResponse.json(
-      { error: e?.message || "Server error" },
+      {
+        error: e?.message || "Server error",
+        debugRoute: "ENTERLAB_DEPOSIT_STATUS_V1",
+      },
       { status: 500 }
     )
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ ok: true, hint: "POST only" })
 }
